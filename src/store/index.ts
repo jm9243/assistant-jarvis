@@ -1,6 +1,6 @@
 import create from 'zustand';
 import { devtools, persist } from 'zustand/middleware';
-import { Workflow, Task, UIElement, AgentConfig } from '@types/index';
+import { Workflow, Task, UIElement, AgentConfig } from '../types';
 
 interface AppState {
   // Workflows
