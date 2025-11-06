@@ -29,7 +29,7 @@ export class ToolRegistry {
     return Array.from(this.tools.values());
   }
 
-  async invokeTool(name: string, arguments: Record<string, any>): Promise<MCPToolResult> {
+  async invokeTool(name: string, args: Record<string, any>): Promise<MCPToolResult> {
     const tool = this.tools.get(name);
     if (!tool) {
       throw new Error(`Tool ${name} not found`);
@@ -37,7 +37,7 @@ export class ToolRegistry {
 
     const invocation: MCPToolInvocation = {
       toolName: name,
-      arguments,
+      arguments: args,
       timestamp: new Date(),
     };
 
@@ -47,7 +47,7 @@ export class ToolRegistry {
     try {
       this.emit('toolInvoked', invocation);
 
-      const result = await tool.handler(arguments);
+      const result = await tool.handler(args);
       const duration = Date.now() - startTime;
 
       const toolResult: MCPToolResult = {
