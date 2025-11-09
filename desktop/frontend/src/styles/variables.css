@@ -1,0 +1,77 @@
+/* 助手-贾维斯 视觉系统变量 */
+:root {
+  /* 主色 - Jarvis Gold */
+  --jarvis-gold-primary: #FFB800;
+  --jarvis-gold-light: #FFD966;
+  --jarvis-gold-dark: #CC9300;
+
+  /* 辅助色 */
+  --arc-blue: #00D9FF;
+  --cyber-purple: #9D4EDD;
+  --success-green: #00F5A0;
+  --warning-orange: #FF6B35;
+  --error-red: #FF006E;
+
+  /* 背景色 */
+  --deep-space: #0A0E27;
+  --dark-panel: #1A1F3A;
+  --elevation-1: #252A4A;
+  --elevation-2: #2E3558;
+  --overlay: rgba(10, 14, 39, 0.8);
+
+  /* 文字色 */
+  --text-primary: #FFFFFF;
+  --text-secondary: #A8B2D1;
+  --text-tertiary: #6B7A99;
+  --text-disabled: #3D4663;
+
+  /* 间距 */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-2xl: 48px;
+  --space-3xl: 64px;
+
+  /* 圆角 */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 24px;
+  --radius-full: 9999px;
+
+  /* 阴影 */
+  --shadow-sm: 0 2px 8px rgba(255, 184, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 16px rgba(255, 184, 0, 0.15), 0 2px 6px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 32px rgba(255, 184, 0, 0.2), 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-glow: 0 0 20px rgba(255, 184, 0, 0.6), 0 0 40px rgba(255, 184, 0, 0.3), 0 0 60px rgba(255, 184, 0, 0.1);
+
+  /* 过渡 */
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-base: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 350ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Z-index层级 */
+  --z-base: 0;
+  --z-dropdown: 1000;
+  --z-sticky: 1100;
+  --z-modal-overlay: 1200;
+  --z-modal: 1300;
+  --z-toast: 1400;
+  --z-tooltip: 1500;
+  --z-orb: 9999;
+}
+
+/* 亮色主题 */
+[data-theme="light"] {
+  --deep-space: #F8F9FA;
+  --dark-panel: #FFFFFF;
+  --elevation-1: #F1F3F5;
+  --elevation-2: #E9ECEF;
+
+  --text-primary: #1A1F3A;
+  --text-secondary: #6B7A99;
+  --text-tertiary: #A8B2D1;
+}

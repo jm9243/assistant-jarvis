@@ -1,252 +1,88 @@
-/**
- * 工作流状态管理
- */
 import { create } from 'zustand';
-import type { IWorkflow, INode, IEdge } from '@/types';
+import type { Workflow } from '@/types';
 
-interface WorkflowStore {
-  workflows: IWorkflow[];
-  currentWorkflow: IWorkflow | null;
-  selectedNodeId: string | null;
-  history: IWorkflow[];
-  historyIndex: number;
-  setWorkflows: (workflows: IWorkflow[]) => void;
-  addWorkflow: (workflow: IWorkflow) => void;
-  updateWorkflow: (id: string, updates: Partial<IWorkflow>) => void;
-  deleteWorkflow: (id: string) => void;
-  setCurrentWorkflow: (workflow: IWorkflow | null) => void;
-  ensureWorkflow: () => IWorkflow;
-  setSelectedNode: (id: string | null) => void;
-  setNodes: (nodes: INode[]) => void;
-  setEdges: (edges: IEdge[]) => void;
-  addNode: (node: INode) => void;
-  updateNode: (id: string, updates: Partial<INode>) => void;
-  deleteNode: (id: string) => void;
-  addEdge: (edge: IEdge) => void;
-  deleteEdge: (id: string) => void;
-  undo: () => void;
-  redo: () => void;
+interface WorkflowState {
+  workflows: Workflow[];
+  currentWorkflow: Workflow | null;
+  loading: boolean;
+  fetchWorkflows: () => Promise<void>;
+  setCurrentWorkflow: (workflow: Workflow | null) => void;
+  createWorkflow: (workflow: Partial<Workflow>) => Promise<void>;
+  updateWorkflow: (id: string, updates: Partial<Workflow>) => Promise<void>;
+  deleteWorkflow: (id: string) => Promise<void>;
 }
 
-const createEmptyWorkflow = (): IWorkflow => ({
-  id: `workflow-${Date.now().toString(36)}`,
-  name: '未命名工作流',
-  description: '自动生成的工作流草稿',
-  version: '1.0.0',
-  nodes: [],
-  edges: [],
-  variables: {},
-  created_at: new Date().toISOString(),
-  updated_at: new Date().toISOString(),
-});
-
-const mergeWorkflowList = (collection: IWorkflow[], workflow: IWorkflow) => {
-  if (collection.some((w) => w.id === workflow.id)) {
-    return collection.map((w) => (w.id === workflow.id ? workflow : w));
-  }
-  return [...collection, workflow];
-};
-
-const pushHistory = (workflow: IWorkflow, state: WorkflowStore) => {
-  const snapshot = JSON.parse(JSON.stringify(workflow)) as IWorkflow;
-  const newHistory = state.history.slice(0, state.historyIndex + 1);
-  newHistory.push(snapshot);
-  return { history: newHistory, historyIndex: newHistory.length - 1 };
-};
-
-export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
+export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   workflows: [],
   currentWorkflow: null,
-  selectedNodeId: null,
-  history: [],
-  historyIndex: -1,
+  loading: false,
 
-  setWorkflows: (workflows) => set({ workflows }),
-
-  addWorkflow: (workflow) =>
-    set((state) => ({
-      workflows: [...state.workflows, workflow],
-    })),
-
-  updateWorkflow: (id, updates) =>
-    set((state) => {
-      const target = state.workflows.find((w) => w.id === id);
-      const updatedWorkflow = target ? { ...target, ...updates, updated_at: new Date().toISOString() } : null;
-      const patchedWorkflows = state.workflows.map((w) =>
-        w.id === id ? (updatedWorkflow as IWorkflow) : w,
-      );
-      const historyUpdates =
-        state.currentWorkflow && state.currentWorkflow.id === id
-          ? pushHistory(updatedWorkflow as IWorkflow, state)
-          : {};
-      return {
-        workflows: patchedWorkflows,
-        currentWorkflow:
-          state.currentWorkflow?.id === id ? (updatedWorkflow as IWorkflow) : state.currentWorkflow,
-        ...historyUpdates,
-      };
-    }),
-
-  deleteWorkflow: (id) =>
-    set((state) => ({
-      workflows: state.workflows.filter((w) => w.id !== id),
-      currentWorkflow:
-        state.currentWorkflow?.id === id ? null : state.currentWorkflow,
-    })),
-
-  setCurrentWorkflow: (workflow) =>
-    set((state) => ({
-      currentWorkflow: workflow,
-      selectedNodeId: null,
-      history: workflow ? [JSON.parse(JSON.stringify(workflow))] : [],
-      historyIndex: workflow ? 0 : -1,
-      workflows: workflow
-        ? state.workflows.some((w) => w.id === workflow.id)
-          ? state.workflows.map((w) => (w.id === workflow.id ? workflow : w))
-          : [...state.workflows, workflow]
-        : state.workflows,
-    })),
-
-  ensureWorkflow: () => {
-    const state = get();
-    if (state.currentWorkflow) return state.currentWorkflow;
-    const workflow = createEmptyWorkflow();
-    set({
-      currentWorkflow: workflow,
-      workflows: [workflow],
-      history: [JSON.parse(JSON.stringify(workflow))],
-      historyIndex: 0,
-    });
-    return workflow;
+  fetchWorkflows: async () => {
+    set({ loading: true });
+    try {
+      // TODO: 实际的API调用
+      // 模拟数据
+      const mockWorkflows: Workflow[] = [
+        {
+          id: '1',
+          name: '自动发送日报',
+          description: '每日自动生成报表并发送邮件',
+          category: '办公自动化',
+          tags: ['日报', '邮件'],
+          status: 'published',
+          nodes: [],
+          edges: [],
+          version: '1.0.0',
+          createdAt: '2025-11-06T10:00:00Z',
+          updatedAt: '2025-11-08T14:00:00Z',
+          executionCount: 12,
+          successRate: 95,
+        },
+      ];
+      set({ workflows: mockWorkflows });
+    } finally {
+      set({ loading: false });
+    }
   },
 
-  setSelectedNode: (id) => set({ selectedNodeId: id }),
+  setCurrentWorkflow: (workflow) => {
+    set({ currentWorkflow: workflow });
+  },
 
-  setNodes: (nodes) =>
-    set((state) => {
-      if (!state.currentWorkflow) return state;
-      const updated = { ...state.currentWorkflow, nodes, updated_at: new Date().toISOString() };
-      return {
-        currentWorkflow: updated,
-        workflows: mergeWorkflowList(state.workflows, updated),
-        ...pushHistory(updated, state),
-      };
-    }),
+  createWorkflow: async (workflow) => {
+    // TODO: 实际的API调用
+    const newWorkflow: Workflow = {
+      id: Date.now().toString(),
+      name: workflow.name || '新工作流',
+      description: workflow.description || '',
+      category: workflow.category || '未分类',
+      tags: workflow.tags || [],
+      status: 'draft',
+      nodes: workflow.nodes || [],
+      edges: workflow.edges || [],
+      version: '1.0.0',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      executionCount: 0,
+      successRate: 0,
+    };
 
-  setEdges: (edges) =>
-    set((state) => {
-      if (!state.currentWorkflow) return state;
-      const updated = { ...state.currentWorkflow, edges, updated_at: new Date().toISOString() };
-      return {
-        currentWorkflow: updated,
-        workflows: mergeWorkflowList(state.workflows, updated),
-        ...pushHistory(updated, state),
-      };
-    }),
+    set((state) => ({
+      workflows: [...state.workflows, newWorkflow],
+    }));
+  },
 
-  addNode: (node) =>
-    set((state) => {
-      if (!state.currentWorkflow) return state;
-      const updated = {
-        ...state.currentWorkflow,
-        nodes: [...state.currentWorkflow.nodes, node],
-        updated_at: new Date().toISOString(),
-      };
-      return {
-        currentWorkflow: updated,
-        workflows: mergeWorkflowList(state.workflows, updated),
-        ...pushHistory(updated, state),
-      };
-    }),
+  updateWorkflow: async (id, updates) => {
+    set((state) => ({
+      workflows: state.workflows.map((wf) =>
+        wf.id === id ? { ...wf, ...updates, updatedAt: new Date().toISOString() } : wf
+      ),
+    }));
+  },
 
-  updateNode: (id, updates) =>
-    set((state) => {
-      if (!state.currentWorkflow) return state;
-      const updated = {
-        ...state.currentWorkflow,
-        nodes: state.currentWorkflow.nodes.map((n) =>
-          n.id === id ? { ...n, ...updates } : n,
-        ),
-        updated_at: new Date().toISOString(),
-      };
-      return {
-        currentWorkflow: updated,
-        workflows: mergeWorkflowList(state.workflows, updated),
-        ...pushHistory(updated, state),
-      };
-    }),
-
-  deleteNode: (id) =>
-    set((state) => {
-      if (!state.currentWorkflow) return state;
-      const updated = {
-        ...state.currentWorkflow,
-        nodes: state.currentWorkflow.nodes.filter((n) => n.id !== id),
-        edges: state.currentWorkflow.edges.filter(
-          (e) => e.source !== id && e.target !== id,
-        ),
-        updated_at: new Date().toISOString(),
-      };
-      return {
-        currentWorkflow: updated,
-        workflows: mergeWorkflowList(state.workflows, updated),
-        selectedNodeId:
-          state.selectedNodeId === id ? null : state.selectedNodeId,
-        ...pushHistory(updated, state),
-      };
-    }),
-
-  addEdge: (edge) =>
-    set((state) => {
-      if (!state.currentWorkflow) return state;
-      const updated = {
-        ...state.currentWorkflow,
-        edges: [...state.currentWorkflow.edges, edge],
-        updated_at: new Date().toISOString(),
-      };
-      return {
-        currentWorkflow: updated,
-        workflows: mergeWorkflowList(state.workflows, updated),
-        ...pushHistory(updated, state),
-      };
-    }),
-
-  deleteEdge: (id) =>
-    set((state) => {
-      if (!state.currentWorkflow) return state;
-      const updated = {
-        ...state.currentWorkflow,
-        edges: state.currentWorkflow.edges.filter((e) => e.id !== id),
-        updated_at: new Date().toISOString(),
-      };
-      return {
-        currentWorkflow: updated,
-        workflows: mergeWorkflowList(state.workflows, updated),
-        ...pushHistory(updated, state),
-      };
-    }),
-
-  undo: () =>
-    set((state) => {
-      if (state.historyIndex <= 0) return state;
-      const prevIndex = state.historyIndex - 1;
-      const snapshot = state.history[prevIndex];
-      return {
-        historyIndex: prevIndex,
-        currentWorkflow: snapshot,
-        workflows: mergeWorkflowList(state.workflows, snapshot),
-      };
-    }),
-
-  redo: () =>
-    set((state) => {
-      if (state.historyIndex >= state.history.length - 1) return state;
-      const nextIndex = state.historyIndex + 1;
-      const snapshot = state.history[nextIndex];
-      return {
-        historyIndex: nextIndex,
-        currentWorkflow: snapshot,
-        workflows: mergeWorkflowList(state.workflows, snapshot),
-      };
-    }),
+  deleteWorkflow: async (id) => {
+    set((state) => ({
+      workflows: state.workflows.filter((wf) => wf.id !== id),
+    }));
+  },
 }));
