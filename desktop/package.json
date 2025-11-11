@@ -1,0 +1,39 @@
+{
+  "name": "jarvis-desktop",
+  "version": "1.0.0",
+  "description": "助手·贾维斯 - 桌面端应用",
+  "private": true,
+  "scripts": {
+    "postinstall": "cd frontend && npm install",
+    "prestart": "npm run kill-ports",
+    "start": "concurrently -n \"ENGINE,TAURI\" -c \"blue,green\" \"npm run start:engine\" \"npm run start:tauri\"",
+    "kill-ports": "lsof -ti:1420 -ti:8000 | xargs kill -9 2>/dev/null || true",
+    "prepare-resources": "cd frontend/src-tauri && ./prepare-resources.sh",
+    "start:engine": "cd engine && python3 main.py",
+    "start:tauri": "cd frontend && npm run tauri:dev",
+    "dev": "npm start",
+    "build": "npm run build:frontend && npm run build:tauri",
+    "build:frontend": "cd frontend && npm run build",
+    "build:tauri": "cd frontend && npm run tauri:build",
+    "build:engine": "cd engine && python3 build.py",
+    "bundle": "cd frontend/src-tauri && ./build-with-pyinstaller.sh",
+    "bundle:simple": "cd frontend/src-tauri && ./build-simple.sh",
+    "package": "npm run build",
+    "test": "cd frontend && npm test",
+    "lint": "cd frontend && npm run lint",
+    "format": "cd frontend && npm run format",
+    "clean": "rm -rf frontend/dist frontend/src-tauri/target engine/dist engine/build logs"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "keywords": [
+    "jarvis",
+    "rpa",
+    "automation",
+    "tauri",
+    "desktop"
+  ],
+  "author": "Jarvis Team",
+  "license": "UNLICENSED"
+}

@@ -1,0 +1,69 @@
+# Web框架
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+websockets==12.0
+python-multipart==0.0.6
+
+# 数据验证
+pydantic==2.5.3
+pydantic-settings==2.1.0
+
+# HTTP客户端
+httpx==0.26.0
+aiohttp==3.9.1
+
+# GUI自动化 (Windows)
+pywinauto==0.6.8; sys_platform == 'win32'
+
+# GUI自动化 (macOS)
+pyobjc-framework-Cocoa==10.1; sys_platform == 'darwin'
+pyobjc-framework-Quartz==10.1; sys_platform == 'darwin'
+
+# 键鼠监听
+pynput==1.7.6
+
+# Web自动化
+playwright==1.41.0
+
+# OCR
+pytesseract==0.3.10
+Pillow==10.2.0
+
+# 图像处理
+opencv-python==4.9.0.80
+numpy==1.26.3
+
+# 数据库
+sqlalchemy==2.0.25
+aiosqlite==0.19.0
+
+# 工具
+python-dotenv==1.0.0
+loguru==0.7.2
+psutil==5.9.7
+
+# 加密
+cryptography==42.0.0
+keyring==24.3.0
+
+# 自动化工具
+pyautogui==0.9.54
+pyperclip==1.8.2
+
+# AI Agent系统
+chromadb==0.4.22
+openai==1.10.0
+anthropic==0.8.1
+
+# 文档处理
+pypdf2==3.0.1
+python-docx==1.1.0
+markdown==3.5.2
+
+# 缓存
+cachetools==5.3.2
+
+# 测试
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0

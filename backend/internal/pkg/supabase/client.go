@@ -13,6 +13,7 @@
 package supabase
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/assistant-jarvis/backend/internal/config"
@@ -21,9 +22,10 @@ import (
 
 // Client Supabase 客户端封装
 type Client struct {
-	client *supabase.Client
-	url    string
-	apiKey string
+	client     *supabase.Client
+	authClient *SupabaseAuthClient
+	url        string
+	apiKey     string
 }
 
 // NewClient 创建 Supabase 客户端
@@ -34,10 +36,13 @@ func NewClient() (*Client, error) {
 		return nil, fmt.Errorf("failed to create supabase client: %w", err)
 	}
 
+	authClient := NewAuthClient(cfg.SupabaseURL, cfg.SupabaseKey)
+
 	return &Client{
-		client: client,
-		url:    cfg.SupabaseURL,
-		apiKey: cfg.SupabaseKey,
+		client:     client,
+		authClient: authClient,
+		url:        cfg.SupabaseURL,
+		apiKey:     cfg.SupabaseKey,
 	}, nil
 }
 
@@ -49,7 +54,10 @@ func (c *Client) GetNativeClient() *supabase.Client {
 
 // Auth 获取认证服务
 func (c *Client) Auth() AuthService {
-	return AuthService{client: c.client}
+	return AuthService{
+		client:     c.client,
+		authClient: c.authClient,
+	}
 }
 
 // DB 获取数据库服务  
@@ -66,7 +74,8 @@ func (c *Client) Storage() StorageService {
 
 // AuthService 认证服务封装
 type AuthService struct {
-	client *supabase.Client
+	client     *supabase.Client
+	authClient *SupabaseAuthClient
 }
 
 // AuthResponse 认证响应
@@ -85,23 +94,17 @@ type AuthUser struct {
 
 // SignUp 用户注册
 func (a AuthService) SignUp(email, password string) (*AuthResponse, error) {
-	// 等待 SDK 支持：当前 SDK 正在快速迭代中
-	// 建议：直接使用 a.client.Auth.SignUp() 方法
-	return nil, fmt.Errorf("use native client.Auth.SignUp() instead, SDK wrapper pending")
+	return a.authClient.SignUp(email, password)
 }
 
 // SignIn 用户登录
 func (a AuthService) SignIn(email, password string) (*AuthResponse, error) {
-	// 等待 SDK 支持：当前 SDK 正在快速迭代中
-	// 建议：直接使用 a.client.Auth.SignIn() 方法
-	return nil, fmt.Errorf("use native client.Auth.SignIn() instead, SDK wrapper pending")
+	return a.authClient.SignIn(email, password)
 }
 
 // User 验证 Token 并获取用户信息
 func (a AuthService) User(token string) (*AuthUser, error) {
-	// 等待 SDK 支持：当前 SDK 正在快速迭代中
-	// 建议：直接使用 a.client.Auth.User() 方法
-	return nil, fmt.Errorf("use native client.Auth.User() instead, SDK wrapper pending")
+	return a.authClient.GetUser(token)
 }
 
 // === 数据库服务 ===
@@ -142,23 +145,38 @@ func (q *QueryBuilder) Single() *QueryBuilder {
 
 // Execute 执行查询
 func (q *QueryBuilder) Execute(result interface{}) error {
-	// 等待 SDK 支持：使用原生 Client 的 DB 方法
-	// 建议：q.client.DB.From(table).Select(...).Execute()
-	return fmt.Errorf("use native client.DB methods instead, SDK wrapper pending")
+	// 使用原生 postgrest 客户端
+	data, _, err := q.client.From(q.table).Select("*", "", false).Execute()
+	if err != nil {
+		return fmt.Errorf("query failed: %w", err)
+	}
+	
+	// 解析结果
+	if err := json.Unmarshal(data, result); err != nil {
+		return fmt.Errorf("failed to parse result: %w", err)
+	}
+	
+	return nil
 }
 
 // Insert 插入数据
 func (q *QueryBuilder) Insert(data interface{}) (*QueryBuilder, error) {
-	// 等待 SDK 支持：使用原生 Client 的 DB 方法
-	// 建议：q.client.DB.From(table).Insert(...)
-	return q, fmt.Errorf("use native client.DB methods instead, SDK wrapper pending")
+	// 使用原生 postgrest 客户端
+	_, _, err := q.client.From(q.table).Insert(data, false, "", "", "").Execute()
+	if err != nil {
+		return q, fmt.Errorf("insert failed: %w", err)
+	}
+	return q, nil
 }
 
 // Update 更新数据
 func (q *QueryBuilder) Update(data interface{}) (*QueryBuilder, error) {
-	// 等待 SDK 支持：使用原生 Client 的 DB 方法
-	// 建议：q.client.DB.From(table).Update(...)
-	return q, fmt.Errorf("use native client.DB methods instead, SDK wrapper pending")
+	// 使用原生 postgrest 客户端
+	_, _, err := q.client.From(q.table).Update(data, "", "").Execute()
+	if err != nil {
+		return q, fmt.Errorf("update failed: %w", err)
+	}
+	return q, nil
 }
 
 // === 存储服务 ===

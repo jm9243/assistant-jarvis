@@ -1,0 +1,156 @@
+/**
+ * 全局主题样式
+ * 使用CSS变量定义，方便全局更新
+ */
+
+:root {
+  /* 主色调 */
+  --color-primary: #FFB800;
+  --color-primary-dark: #CC9300;
+  --color-primary-light: #FFD966;
+  
+  /* 背景色 */
+  --color-bg-base: #0A0E27;
+  --color-bg-elevated: #0E1533;
+  --color-bg-panel: #1A1F3A;
+  --color-bg-panel-hover: #252A4A;
+  
+  /* 文本色 */
+  --color-text-primary: #FFFFFF;
+  --color-text-secondary: #A8B2D1;
+  --color-text-tertiary: #6B7280;
+  
+  /* 边框色 */
+  --color-border-base: rgba(255, 255, 255, 0.05);
+  --color-border-light: rgba(255, 255, 255, 0.1);
+  --color-border-medium: rgba(255, 255, 255, 0.2);
+  
+  /* 状态色 */
+  --color-success: #10B981;
+  --color-warning: #F59E0B;
+  --color-error: #EF4444;
+  --color-info: #3B82F6;
+  
+  /* 阴影 */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  --shadow-glow: 0 0 20px rgba(255, 184, 0, 0.3);
+  
+  /* 圆角 */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  
+  /* 间距 */
+  --spacing-xs: 0.25rem;
+  --spacing-sm: 0.5rem;
+  --spacing-md: 1rem;
+  --spacing-lg: 1.5rem;
+  --spacing-xl: 2rem;
+  
+  /* 过渡 */
+  --transition-fast: 150ms ease-in-out;
+  --transition-base: 200ms ease-in-out;
+  --transition-slow: 300ms ease-in-out;
+}
+
+/* 全局样式类 */
+.jarvis-page {
+  @apply h-full flex flex-col bg-jarvis-space;
+}
+
+.jarvis-header {
+  @apply h-16 bg-jarvis-panel/30 border-b border-white/5 flex items-center justify-between px-6;
+}
+
+.jarvis-content {
+  @apply flex-1 overflow-y-auto p-6;
+}
+
+.jarvis-card {
+  @apply bg-jarvis-panel border border-white/10 rounded-lg p-6 hover:border-jarvis-gold/50 transition-all;
+}
+
+.jarvis-input {
+  @apply w-full px-4 py-2 bg-jarvis-panel border border-white/10 rounded-lg text-jarvis-text placeholder-jarvis-text-secondary;
+  @apply focus:outline-none focus:ring-2 focus:ring-jarvis-gold focus:border-transparent;
+  @apply transition-all;
+}
+
+.jarvis-label {
+  @apply block text-sm font-medium text-jarvis-text mb-2;
+}
+
+.jarvis-section {
+  @apply bg-jarvis-panel/30 border border-white/5 rounded-lg p-6;
+}
+
+.jarvis-divider {
+  @apply border-t border-white/5 my-6;
+}
+
+/* 滚动条样式 */
+.jarvis-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.jarvis-scrollbar::-webkit-scrollbar-track {
+  background: var(--color-bg-panel);
+  border-radius: var(--radius-sm);
+}
+
+.jarvis-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 184, 0, 0.3);
+  border-radius: var(--radius-sm);
+}
+
+.jarvis-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 184, 0, 0.5);
+}
+
+/* 动画 */
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(255, 184, 0, 0.7);
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgba(255, 184, 0, 0);
+  }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* 加载状态 */
+.jarvis-loading {
+  @apply inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-jarvis-gold;
+}
+
+/* 空状态 */
+.jarvis-empty {
+  @apply flex flex-col items-center justify-center py-12 text-jarvis-text-secondary;
+}
+
+/* 错误状态 */
+.jarvis-error {
+  @apply bg-red-500/10 border border-red-500/50 text-red-400 px-4 py-3 rounded-lg;
+}
+
+/* 成功状态 */
+.jarvis-success {
+  @apply bg-green-500/10 border border-green-500/50 text-green-400 px-4 py-3 rounded-lg;
+}
+
+/* 警告状态 */
+.jarvis-warning {
+  @apply bg-yellow-500/10 border border-yellow-500/50 text-yellow-400 px-4 py-3 rounded-lg;
+}
+
+/* 信息状态 */
+.jarvis-info {
+  @apply bg-blue-500/10 border border-blue-500/50 text-blue-400 px-4 py-3 rounded-lg;
+}

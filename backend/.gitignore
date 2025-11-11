@@ -45,7 +45,7 @@ logs/
 /server
 /backend
 /cmd/server/server
-
+build/
 # Temporary files
 tmp/
 temp/

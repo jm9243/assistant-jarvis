@@ -11,10 +11,10 @@ import (
 func CORSMiddleware() gin.HandlerFunc {
 	config := cors.Config{
 		AllowOrigins: []string{
-			"https://app.jarvis.com",
-			"tauri://localhost",
-			"http://localhost:5173", // 开发环境
+			"http://localhost:5173", // 开发环境 - Vite
 			"http://localhost:3000", // 开发环境
+			"http://localhost:1420", // Tauri 开发环境
+			"https://tauri.localhost", // Tauri 生产环境
 		},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "X-Requested-With"},

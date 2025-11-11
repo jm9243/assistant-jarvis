@@ -46,16 +46,19 @@ func main() {
 	}
 	logger.Logger.Info("Supabase client initialized")
 
-	// 初始化 Redis 缓存
-	redisCache, err := cache.NewRedisCache(
+	// 初始化 Redis 缓存（可选）
+	var redisCache *cache.RedisCache
+	redisCache, err = cache.NewRedisCache(
 		config.AppConfig.RedisURL,
 		config.AppConfig.RedisPassword,
 	)
 	if err != nil {
-		logger.Logger.Fatal("Failed to init Redis cache", zap.Error(err))
+		logger.Logger.Warn("Redis cache not available, running without cache", zap.Error(err))
+		redisCache = nil
+	} else {
+		defer redisCache.Close()
+		logger.Logger.Info("Redis cache initialized")
 	}
-	defer redisCache.Close()
-	logger.Logger.Info("Redis cache initialized")
 
 	// 初始化 WebSocket Hub
 	wsHub := websocket.NewHub()
@@ -67,6 +70,10 @@ func main() {
 	workflowRepo := repository.NewWorkflowRepository(supabaseClient)
 	taskRepo := repository.NewTaskRepository(supabaseClient)
 	logRepo := repository.NewLogRepository(supabaseClient)
+	agentRepo := repository.NewAgentRepository(supabaseClient)
+	convRepo := repository.NewConversationRepository(supabaseClient)
+	llmModelRepo := repository.NewLLMModelRepository(supabaseClient)
+	usageRepo := repository.NewUsageRepository(supabaseClient)
 	logger.Logger.Info("Repositories initialized")
 
 	// 初始化 Service
@@ -76,6 +83,14 @@ func main() {
 	taskService := service.NewTaskService(taskRepo, workflowRepo, wsHub)
 	storageService := service.NewStorageService(supabaseClient)
 	logService := service.NewLogService(logRepo)
+	agentService := service.NewAgentService(agentRepo, convRepo)
+	
+	// LLM 相关服务
+	keyRotationService := service.NewKeyRotationService(redisCache)
+	usageService := service.NewUsageService(usageRepo)
+	quotaService := service.NewQuotaService(usageRepo, userRepo)
+	llmProxyService := service.NewLLMProxyService(llmModelRepo, keyRotationService, usageService, quotaService)
+	
 	logger.Logger.Info("Services initialized")
 
 	// 初始化 Handler
@@ -85,6 +100,10 @@ func main() {
 	taskHandler := handler.NewTaskHandler(taskService)
 	storageHandler := handler.NewStorageHandler(storageService)
 	logHandler := handler.NewLogHandler(logService)
+	agentHandler := handler.NewAgentHandler(agentService)
+	llmHandler := handler.NewLLMHandler(llmProxyService)
+	llmModelHandler := handler.NewLLMModelHandler(llmModelRepo)
+	quotaHandler := handler.NewQuotaHandler(quotaService, usageService)
 	logger.Logger.Info("Handlers initialized")
 
 	// 设置 Gin 模式
@@ -172,6 +191,54 @@ func main() {
 				logs.GET("", logHandler.List)
 				logs.GET("/task", logHandler.GetTaskLogs)
 			}
+
+			// Agent 相关
+			agents := authenticated.Group("/agents")
+			{
+				agents.POST("", agentHandler.Create)
+				agents.GET("", agentHandler.List)
+				agents.GET("/:id", agentHandler.Get)
+				agents.PUT("/:id", agentHandler.Update)
+				agents.DELETE("/:id", agentHandler.Delete)
+			}
+
+			// 对话相关
+			conversations := authenticated.Group("/conversations")
+			{
+				conversations.POST("", agentHandler.CreateConversation)
+				conversations.GET("", agentHandler.ListConversations)
+				conversations.GET("/:id", agentHandler.GetConversation)
+				conversations.POST("/:id/messages", agentHandler.SendMessage)
+				conversations.GET("/:id/messages", agentHandler.GetMessages)
+			}
+
+			// LLM 代理服务
+			llm := authenticated.Group("/llm")
+			{
+				llm.POST("/chat", llmHandler.Chat)
+				llm.GET("/models", llmHandler.GetAvailableModels)
+				llm.GET("/usage", llmHandler.GetUsage)
+			}
+
+			// LLM 模型管理（管理员功能）
+			llmModels := authenticated.Group("/llm-models")
+			{
+				llmModels.POST("", llmModelHandler.Create)
+				llmModels.GET("", llmModelHandler.List)
+				llmModels.GET("/:id", llmModelHandler.Get)
+				llmModels.PUT("/:id", llmModelHandler.Update)
+				llmModels.DELETE("/:id", llmModelHandler.Delete)
+			}
+
+			// 配额和用量管理
+			quota := authenticated.Group("/quota")
+			{
+				quota.GET("", quotaHandler.GetQuota)                    // 获取配额信息
+				quota.GET("/levels", quotaHandler.GetQuotaLevels)       // 获取配额等级
+				quota.GET("/usage/monthly", quotaHandler.GetMonthlyUsage) // 本月用量
+				quota.GET("/usage/daily", quotaHandler.GetDailyUsage)   // 今日用量
+			}
+
 		}
 	}
 
