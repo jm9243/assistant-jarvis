@@ -119,7 +119,7 @@
 
 ### PC端
 - **前端**: Tauri 2 + React + TypeScript
-- **引擎**: Python Sidecar (FastAPI)
+- **引擎**: Python Sidecar (常驻进程，IPC通信)
 - **GUI自动化**: pywinauto (Windows) / pyobjc (macOS)
 - **Web自动化**: Playwright
 - **本地存储**: SQLite

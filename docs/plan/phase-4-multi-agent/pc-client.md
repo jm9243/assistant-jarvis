@@ -4,6 +4,11 @@
 **预计时间**: 2.5个月  
 **依赖**: Phase 2 三种Agent完成
 
+**架构说明**: 
+- 本阶段基于Phase 2的自研Agent系统
+- Multi-Agent协同基于已有的BasicAgent和ReActAgent实现
+- 不引入新的Agent框架，保持架构简洁
+
 ---
 
 ## 目录

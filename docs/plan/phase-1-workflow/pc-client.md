@@ -509,7 +509,7 @@ Python Sidecar启动元素监听
 - UI组件: Shadcn UI
 
 ### 后端引擎（Python Sidecar）
-- 框架: FastAPI
+- 运行模式: 常驻进程（stdin/stdout IPC通信）
 - GUI自动化: pywinauto (Windows) / pyobjc (macOS)
 - 键鼠监听: pynput
 - Web自动化: Playwright

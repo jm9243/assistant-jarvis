@@ -56,8 +56,8 @@
 - [ ] 知识库CRUD API
 - [ ] 文档上传处理
 - [ ] 文档解析与分块
-- [ ] 向量化服务（使用pgvector）
-- [ ] 向量检索API
+- [ ] 向量化服务（PC端使用Chroma本地，云端元数据存储）
+- [ ] 向量检索API（代理PC端Chroma检索）
 - [ ] 关键词检索API
 - [ ] 混合检索API
 - [ ] Rerank重排序
@@ -776,12 +776,25 @@ Response:
 
 ### 5. 知识库服务
 
-#### 5.1 数据库Schema（使用pgvector）
+#### 5.1 架构说明
 
-**启用pgvector扩展**:
+**重要架构决策**：
+- **向量存储**：使用Chroma本地向量数据库（运行在PC端Python引擎中）
+- **云端存储**：仅存储知识库元数据（文档信息、配置等）
+- **检索方式**：Go后台API代理PC端Chroma的检索请求
+
+**为什么这样设计**：
+1. 隐私保护：向量数据保存在用户本地，不上传云端
+2. 性能优化：本地检索速度更快，无网络延迟
+3. 成本控制：无需云端向量数据库服务费用
+4. 轻量部署：Chroma易于集成到Python引擎
+
+#### 5.2 数据库Schema（仅元数据）
+
+**知识库元数据表**:
 ```sql
-CREATE EXTENSION IF NOT EXISTS vector;
-CREATE EXTENSION IF NOT EXISTS pg_trgm; -- 用于关键词检索
+-- 不需要pgvector扩展，仅存储元数据
+CREATE EXTENSION IF NOT EXISTS pg_trgm; -- 用于关键词检索（可选）
 ```
 
 **knowledge_bases表**:
@@ -811,7 +824,7 @@ CREATE TABLE public.documents (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   knowledge_base_id UUID NOT NULL REFERENCES public.knowledge_bases(id) ON DELETE CASCADE,
   name VARCHAR(255) NOT NULL,
-  file_path TEXT NOT NULL,
+  file_path TEXT NOT NULL, -- Supabase Storage路径
   file_type VARCHAR(50), -- pdf, docx, txt, md, html
   file_size INTEGER, -- bytes
   status document_status DEFAULT 'pending',
@@ -826,32 +839,10 @@ CREATE INDEX idx_documents_kb_id ON public.documents(knowledge_base_id);
 CREATE INDEX idx_documents_status ON public.documents(status);
 ```
 
-**document_chunks表**:
-```sql
-CREATE TABLE public.document_chunks (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  document_id UUID NOT NULL REFERENCES public.documents(id) ON DELETE CASCADE,
-  knowledge_base_id UUID NOT NULL REFERENCES public.knowledge_bases(id) ON DELETE CASCADE,
-  content TEXT NOT NULL,
-  embedding vector(1536), -- OpenAI text-embedding-ada-002的维度
-  metadata JSONB DEFAULT '{}',
-  chunk_index INTEGER,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
-CREATE INDEX idx_chunks_document_id ON public.document_chunks(document_id);
-CREATE INDEX idx_chunks_kb_id ON public.document_chunks(knowledge_base_id);
-
--- 向量相似度搜索索引（使用HNSW算法）
-CREATE INDEX idx_chunks_embedding_hnsw 
-ON public.document_chunks 
-USING hnsw (embedding vector_cosine_ops);
-
--- 全文搜索索引
-CREATE INDEX idx_chunks_content_trgm 
-ON public.document_chunks 
-USING gin (content gin_trgm_ops);
-```
+**注意**：
+- 不需要`document_chunks`表，分块和向量数据存储在PC端Chroma中
+- 云端仅存储文档元数据和状态信息
+- 文档文件存储在Supabase Storage中
 
 ---
 
@@ -910,20 +901,22 @@ Response:
 ```
 文档上传 → 存储到Supabase Storage
     ↓
-解析文档内容（使用python-docx、PyPDF2等）
+Go后台通知PC端Python引擎处理
+    ↓
+PC端下载文档并解析（使用python-docx、PyPDF2等）
     ↓
 文本分块（按chunk_size和chunk_overlap）
     ↓
 调用Embedding API生成向量
     ↓
-存储向量到document_chunks表
+存储向量到PC端Chroma数据库
     ↓
-更新文档状态为completed
+PC端通知Go后台更新文档状态为completed
 ```
 
 ---
 
-#### 5.3 向量检索API
+#### 5.3 向量检索API（代理模式）
 
 **向量相似度搜索**:
 ```
@@ -956,22 +949,33 @@ Response:
 }
 ```
 
-**SQL实现**:
-```sql
--- 计算查询向量与文档向量的余弦相似度
-SELECT 
-  dc.id,
-  dc.content,
-  1 - (dc.embedding <=> $1) AS similarity, -- cosine similarity
-  d.name AS document_name,
-  dc.metadata
-FROM document_chunks dc
-JOIN documents d ON dc.document_id = d.id
-WHERE dc.knowledge_base_id = $2
-  AND 1 - (dc.embedding <=> $1) > $3 -- min_similarity
-ORDER BY dc.embedding <=> $1 -- 升序：距离越小，相似度越高
-LIMIT $4; -- top_k
+**实现方式**:
+```go
+func VectorSearch(c *gin.Context) {
+  kbID := c.Param("kb_id")
+  
+  var req struct {
+    Query         string  `json:"query"`
+    TopK          int     `json:"top_k"`
+    MinSimilarity float64 `json:"min_similarity"`
+  }
+  c.ShouldBindJSON(&req)
+  
+  // 方案1：通过WebSocket通知PC端执行检索
+  result, err := notifyPCSearch(userID, kbID, req)
+  
+  // 方案2：PC端主动轮询检索任务（如果WebSocket不可用）
+  // taskID := createSearchTask(userID, kbID, req)
+  // result := waitForSearchResult(taskID)
+  
+  c.JSON(http.StatusOK, result)
+}
 ```
+
+**注意**：
+- Go后台不直接访问Chroma，而是通过PC端代理
+- 需要PC端在线才能执行检索
+- 可以考虑缓存常见查询结果
 
 ---
 
@@ -1412,8 +1416,8 @@ Response:
 │                   Supabase平台（扩展）                    │
 │                                                           │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐   │
-│  │ PostgreSQL   │  │   pgvector   │  │   pg_trgm    │   │
-│  │ (新增表)     │  │ (向量检索)   │  │ (全文检索)   │   │
+│  │ PostgreSQL   │  │   Supabase   │  │   Chroma     │   │
+│  │ (元数据)     │  │   Storage    │  │ (PC端本地)   │   │
 │  └──────────────┘  └──────────────┘  └──────────────┘   │
 └──────────────────────────────────────────────────────────┘
 ```
@@ -1445,10 +1449,10 @@ backend/
 │   │   ├── openai.go              # OpenAI实现
 │   │   ├── claude.go              # Claude实现
 │   │   └── coze.go                # Coze实现
-│   ├── vectordb/                  # 向量数据库
-│   │   ├── client.go              # pgvector客户端
-│   │   ├── embedding.go           # Embedding服务
-│   │   └── search.go              # 向量检索
+│   ├── knowledge/                 # 知识库服务
+│   │   ├── metadata.go            # 元数据管理
+│   │   ├── proxy.go               # 检索代理（代理PC端Chroma）
+│   │   └── sync.go                # 状态同步
 │   └── rag/                       # RAG实现
 │       ├── retriever.go           # 检索器
 │       ├── reranker.go            # 重排序
@@ -1482,13 +1486,12 @@ backend/
 #### 第2个月：知识库与对话管理
 
 **Week 5-6: 知识库服务**
-- [ ] 启用pgvector扩展
-- [ ] 创建知识库相关数据库表
+- [ ] 创建知识库元数据表（仅元数据，不含向量）
 - [ ] 实现知识库管理API
-- [ ] 实现文档上传与解析
-- [ ] 实现文档分块逻辑
-- [ ] 集成Embedding服务
-- [ ] 实现向量存储
+- [ ] 实现文档上传API（上传到Supabase Storage）
+- [ ] 实现PC端通知机制（通知PC端处理文档）
+- [ ] 实现检索代理API（代理PC端Chroma检索）
+- [ ] 实现文档状态同步
 
 **Week 7-8: 检索与对话**
 - [ ] 实现向量检索API
@@ -1651,12 +1654,13 @@ backend/
 
 ### 技术风险
 
-#### 风险1: pgvector性能不足
+#### 风险1: Chroma性能不足（大规模数据）
 **影响**: 大规模向量检索变慢
 **应对措施**:
-- 使用HNSW索引优化检索速度
-- 合理设置向量维度
-- 必要时使用专业向量数据库（如Qdrant、Milvus）
+- Chroma支持HNSW索引，性能已足够
+- 合理设置向量维度（推荐1536维）
+- 单个知识库建议不超过10万文档
+- 必要时可以分库存储
 
 #### 风险2: LLM API调用不稳定
 **影响**: 用户体验差，对话中断
@@ -1709,7 +1713,7 @@ backend/
 - [ ] 向量检索优化文档
 
 ### 配置交付物
-- [ ] pgvector配置
+- [ ] Chroma配置说明（PC端）
 - [ ] LLM API配置模板
 - [ ] 环境变量配置
 
@@ -1763,34 +1767,48 @@ curl https://api.openai.com/v1/embeddings \
 
 ---
 
-### 附录B: pgvector配置优化
+### 附录B: Chroma配置说明（PC端）
 
-**创建HNSW索引**:
-```sql
--- HNSW索引（高性能）
-CREATE INDEX ON document_chunks 
-USING hnsw (embedding vector_cosine_ops)
-WITH (m = 16, ef_construction = 64);
+**Chroma初始化**（在Python引擎中）:
+```python
+import chromadb
+from chromadb.config import Settings
 
--- IVFFlat索引（节省内存）
-CREATE INDEX ON document_chunks 
-USING ivfflat (embedding vector_cosine_ops)
-WITH (lists = 100);
+# 创建持久化客户端
+client = chromadb.PersistentClient(
+    path="./data/chroma",
+    settings=Settings(
+        anonymized_telemetry=False,
+        allow_reset=True
+    )
+)
+
+# 创建或获取集合
+collection = client.get_or_create_collection(
+    name="knowledge_base_xxx",
+    metadata={"hnsw:space": "cosine"}  # 使用余弦相似度
+)
+
+# 添加文档
+collection.add(
+    documents=["文档内容..."],
+    embeddings=[[0.1, 0.2, ...]],
+    metadatas=[{"source": "doc.pdf"}],
+    ids=["chunk_1"]
+)
+
+# 查询
+results = collection.query(
+    query_embeddings=[[0.1, 0.2, ...]],
+    n_results=10,
+    where={"source": "doc.pdf"}  # 可选过滤
+)
 ```
 
-**查询优化**:
-```sql
--- 设置ef_search参数（HNSW）
-SET hnsw.ef_search = 100;
-
--- 设置probes参数（IVFFlat）
-SET ivfflat.probes = 10;
-
--- 向量相似度查询
-SELECT * FROM document_chunks
-ORDER BY embedding <=> '[0.1, 0.2, ...]'
-LIMIT 10;
-```
+**性能优化**:
+- Chroma默认使用HNSW索引，性能已优化
+- 建议每个知识库独立collection
+- 定期备份Chroma数据目录
 
 ---
 
@@ -1828,8 +1846,13 @@ LONG_TERM_MEMORY_RETENTION_DAYS=90
 
 ### 附录D: 常见问题
 
-**Q1: 为什么选择pgvector而不是专业向量数据库？**
-A: Phase 2规模较小，pgvector足够满足需求。如果Phase 4后向量规模超过百万级，再考虑迁移到Qdrant或Milvus。
+**Q1: 为什么选择Chroma而不是云端向量数据库？**
+A: 
+1. 隐私保护：向量数据保存在用户本地
+2. 性能优化：本地检索无网络延迟
+3. 成本控制：无需云端向量数据库费用
+4. 轻量部署：Chroma易于集成到Python引擎
+5. 规模适中：单个知识库10万文档内性能足够
 
 **Q2: 文档分块的最佳实践是什么？**
 A: 一般chunk_size设为500-1000字符，chunk_overlap设为50-100字符。具体需根据文档类型调整。

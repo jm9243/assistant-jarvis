@@ -729,7 +729,8 @@ AI理解意图
 │  │         Python Sidecar Agent引擎                    │ │
 │  │                                                     │ │
 │  │  ┌──────────────────────────────────────────────┐  │ │
-│  │  │           AgentScope框架                      │  │ │
+│  │  │           自研Agent系统                        │  │ │
+│  │  │     (已与知识库、记忆系统深度集成)              │  │ │
 │  │  │                                               │  │ │
 │  │  │  ┌────────────┐  ┌────────────┐  ┌────────┐ │  │ │
 │  │  │  │Basic Agent │  │ReAct Agent │  │Research│ │  │ │
@@ -785,8 +786,7 @@ AI理解意图
 - 数学公式: KaTeX
 
 **Python Sidecar Agent引擎**:
-- **AgentScope**: Multi-Agent框架
-- **LangChain**: Agent工具集成（可选，用于工具编排）
+- **自研Agent系统**: 轻量级Agent实现（BasicAgent、ReActAgent、Deep Research Agent）
 - **LLM集成**:
   - openai: OpenAI API客户端
   - anthropic: Claude API客户端
@@ -909,7 +909,7 @@ AI理解意图
 - [ ] Agent管理UI框架搭建
 - [ ] Agent列表、创建、编辑页面
 - [ ] Agent配置保存与加载
-- [ ] Python Sidecar集成AgentScope
+- [ ] Python Sidecar自研Agent系统实现
 - [ ] Basic Agent实现
 - [ ] 对话UI实现（支持Markdown、流式输出）
 - [ ] 会话管理实现
@@ -986,7 +986,7 @@ AI理解意图
 - 工程师D: 知识库系统、向量检索、Deep Research Agent
 
 **AI工程师（1人）**:
-- AgentScope框架集成与优化
+- 自研Agent系统优化与扩展
 - Prompt工程
 - 检索策略优化
 - Agent评估体系
@@ -1112,12 +1112,13 @@ AI理解意图
 
 ### 技术风险
 
-#### 风险1: AgentScope学习曲线陡峭
-**影响**: 开发进度延迟
+#### 风险1: 自研Agent系统功能完善度
+**影响**: 可能需要额外开发时间完善Agent功能
 **应对措施**:
-- Week 1提前学习AgentScope文档
-- 参考官方示例项目
-- 必要时考虑使用LangChain替代
+- 基于现有Agent实现（已验证可行）
+- 优先实现核心功能，高级功能后续迭代
+- 参考成熟的Agent实现模式（ReAct、Chain-of-Thought）
+- 保持代码模块化，便于扩展
 
 #### 风险2: 向量数据库性能不足
 **影响**: 检索速度慢，影响用户体验
@@ -1147,13 +1148,13 @@ AI理解意图
 - 分块策略使用LangChain的TextSplitter
 - 并行开发UI和后端
 
-#### 风险2: ReAct Agent调试困难
+#### 风险3: ReAct Agent调试困难
 **影响**: 第2个月进度延迟
 **应对措施**:
 - 从简单工具开始调试
 - 实现完善的日志系统
-- 使用LangSmith等调试工具（可选）
-- 参考成熟的ReAct实现
+- 使用详细的执行日志追踪
+- 参考成熟的ReAct实现模式
 
 ---
 
@@ -1198,17 +1199,26 @@ Phase 2完成后，进入Phase 3: 语音通话。
 
 ## 附录
 
-### 附录A: AgentScope资源链接
+### 附录A: 自研Agent系统架构说明
 
-**官方文档**:
-- AgentScope GitHub: https://github.com/modelscope/agentscope
-- 快速入门: https://modelscope.github.io/agentscope/
-- API文档: https://modelscope.github.io/agentscope/en/api/index.html
+**设计原则**:
+- 轻量级：避免过度抽象，保持代码简洁
+- 可扩展：模块化设计，易于添加新Agent类型
+- 高性能：减少不必要的中间层，直接调用LLM
+- 易调试：完善的日志和状态追踪
 
-**示例项目**:
-- Multi-Agent会话示例
-- ReAct Agent示例
-- RAG Agent示例
+**核心组件**:
+- `AgentBase`: Agent基类，定义通用接口
+- `BasicAgent`: 基础对话型Agent
+- `ReActAgent`: 推理-行动型Agent
+- `DeepResearchAgent`: 深度研究型Agent
+- `ToolRegistry`: 工具注册和管理
+- `MemoryManager`: 记忆系统管理
+
+**参考资源**:
+- ReAct论文: https://arxiv.org/abs/2210.03629
+- Chain-of-Thought: https://arxiv.org/abs/2201.11903
+- 现有实现: `desktop/engine/core/agent/`
 
 ---
 
