@@ -1,3 +1,5 @@
 
 .spec-workflow/
 .cursor/
+.kiro/
+.vscode/
