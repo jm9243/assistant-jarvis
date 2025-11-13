@@ -27,6 +27,14 @@ func NewAgentService(agentRepo *repository.AgentRepository, convRepo *repository
 // CreateAgent 创建 Agent
 func (s *AgentService) CreateAgent(ctx context.Context, userID string, req *model.CreateAgentRequest) (*model.Agent, error) {
 	now := time.Now()
+	// 转换 ModelConfig 为 map
+	modelConfigMap := map[string]interface{}{
+		"model":       req.ModelConfig.Model,
+		"temperature": req.ModelConfig.Temperature,
+		"max_tokens":  req.ModelConfig.MaxTokens,
+		"top_p":       req.ModelConfig.TopP,
+	}
+
 	agent := &model.Agent{
 		ID:               uuid.New().String(),
 		UserID:           userID,
@@ -36,7 +44,7 @@ func (s *AgentService) CreateAgent(ctx context.Context, userID string, req *mode
 		Status:           model.AgentStatusActive,
 		AvatarURL:        req.AvatarURL,
 		Tags:             req.Tags,
-		ModelConfig:      req.ModelConfig,
+		ModelConfig:      modelConfigMap,
 		SystemPrompt:     req.SystemPrompt,
 		PromptTemplate:   req.PromptTemplate,
 		MemoryConfig:     req.MemoryConfig,

@@ -45,7 +45,7 @@ func (s *KeyRotationService) GetNextAPIKey(ctx context.Context, modelID string, 
 	redisKey := fmt.Sprintf("llm:key_rotation:%s", modelID)
 	
 	// 获取当前索引
-	currentIndexStr, err := s.redisCache.Get(ctx, redisKey)
+	currentIndexStr, err := s.redisCache.GetString(ctx, redisKey)
 	currentIndex := 0
 	
 	if err == nil && currentIndexStr != "" {
@@ -78,7 +78,7 @@ func (s *KeyRotationService) ResetRotation(ctx context.Context, modelID string) 
 func (s *KeyRotationService) GetRotationStats(ctx context.Context, modelID string) (map[string]interface{}, error) {
 	redisKey := fmt.Sprintf("llm:key_rotation:%s", modelID)
 	
-	currentIndexStr, err := s.redisCache.Get(ctx, redisKey)
+	currentIndexStr, err := s.redisCache.GetString(ctx, redisKey)
 	if err != nil {
 		return map[string]interface{}{
 			"current_index": 0,
@@ -121,7 +121,7 @@ func (s *KeyRotationService) MarkKeyAsFailed(ctx context.Context, modelID string
 func (s *KeyRotationService) GetKeyFailureCount(ctx context.Context, modelID string, apiKey string) (int, error) {
 	redisKey := fmt.Sprintf("llm:key_failed:%s:%s", modelID, apiKey)
 	
-	countStr, err := s.redisCache.Get(ctx, redisKey)
+	countStr, err := s.redisCache.GetString(ctx, redisKey)
 	if err != nil {
 		return 0, nil
 	}

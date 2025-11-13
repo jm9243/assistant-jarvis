@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useSystemStore } from '@/stores/systemStore';
-import { apiService } from '@/services/api';
+import { systemApi } from '@/services/systemApi';
 import { MetricCard } from '@/components/system/MetricCard';
 import { Button } from '@/components/ui';
 
@@ -36,13 +36,8 @@ export function SystemMonitorPage() {
     try {
       setLoading(true);
       setError(null);
-      const result = await apiService.getLogs({ limit: 50 });
-
-      if (result.success && result.data) {
-        setLogs(result.data);
-      } else {
-        setError(result.error || '获取日志失败');
-      }
+      const logs = await systemApi.getLogs({ limit: 50 });
+      setLogs(logs);
     } catch (err) {
       setError(err instanceof Error ? err.message : '获取日志失败');
     } finally {

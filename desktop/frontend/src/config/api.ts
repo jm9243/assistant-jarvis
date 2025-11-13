@@ -22,6 +22,7 @@ export const API_ENDPOINTS = {
     // 云服务API（Go后台）
     cloud: {
         base: `${CLOUD_API_BASE_URL}${CLOUD_API_PREFIX}`,
+        health: `${CLOUD_API_BASE_URL}/health`,
         auth: {
             login: `${CLOUD_API_BASE_URL}${CLOUD_API_PREFIX}/auth/login`,
             register: `${CLOUD_API_BASE_URL}${CLOUD_API_PREFIX}/auth/register`,

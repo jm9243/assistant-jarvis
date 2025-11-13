@@ -1,0 +1,375 @@
+#!/usr/bin/env python3
+"""
+Python引擎常驻进程主程序
+通过stdin/stdout进行IPC通信
+
+该模块实现了一个常驻进程框架，用于替代HTTP服务器模式。
+主要功能：
+1. 从stdin读取JSON格式的请求
+2. 解析请求并调用对应的函数
+3. 将结果通过stdout返回JSON格式的响应
+4. 完整的日志记录
+5. 优雅的退出机制
+"""
+import sys
+import json
+import signal
+from typing import Dict, Any, Optional
+from pathlib import Path
+
+# 添加项目根目录到Python路径
+project_root = Path(__file__).parent
+sys.path.insert(0, str(project_root))
+
+from logger import get_logger
+from function_registry import FunctionRegistry
+
+# 延迟导入 - 只在需要时才导入，避免启动时阻塞
+# 这些导入会在_register_all_functions中按需进行
+
+logger = get_logger("daemon")
+
+
+class DaemonEngine:
+    """
+    常驻进程引擎
+    
+    负责管理进程生命周期、处理IPC通信、路由函数调用
+    """
+    
+    def __init__(self):
+        """初始化引擎"""
+        self.running = True
+        self.function_registry = FunctionRegistry()
+        
+        # 配置日志
+        self._setup_logging()
+        
+        # 注册信号处理器
+        self._setup_signal_handlers()
+        
+        # 注册所有IPC函数
+        self._register_all_functions()
+        
+        logger.info("Daemon engine initialized")
+    
+    def _setup_logging(self):
+        """
+        配置日志系统
+        
+        日志已经在logger.py中配置好了，这里只需要确认配置
+        注意：不使用stdout，因为stdout用于IPC通信
+        """
+        # 日志已经通过logger.py配置，使用stderr输出
+        # 确保日志目录存在
+        log_dir = Path.home() / ".jarvis" / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        
+        logger.info(f"Logging configured, log directory: {log_dir}")
+
+    
+    def _setup_signal_handlers(self):
+        """
+        设置信号处理器，实现优雅退出
+        
+        捕获SIGINT和SIGTERM信号，确保进程能够优雅地关闭
+        """
+        def signal_handler(signum, frame):
+            """信号处理函数"""
+            signal_name = signal.Signals(signum).name
+            logger.info(f"Received signal {signal_name}, shutting down gracefully...")
+            self.stop()
+        
+        # 注册信号处理器
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
+        
+        logger.debug("Signal handlers registered")
+    
+    def _register_all_functions(self):
+        """注册所有IPC函数（延迟导入）"""
+        logger.info("Registering IPC functions...")
+        print("Registering IPC functions...", file=sys.stderr, flush=True)
+        
+        # 系统函数
+        print("  Registering system functions...", file=sys.stderr, flush=True)
+        self.function_registry.register(
+            "list_functions",
+            self.function_registry.list_functions,
+            "列出所有已注册的函数"
+        )
+        print("  System functions registered", file=sys.stderr, flush=True)
+        
+        # 延迟导入并注册Agent相关函数
+        print("  Importing agent functions...", file=sys.stderr, flush=True)
+        try:
+            from core.agent.ipc_functions import (
+                agent_chat,
+                create_conversation,
+                get_conversation_history
+            )
+            print("  Agent functions imported", file=sys.stderr, flush=True)
+            self.function_registry.register("agent_chat", agent_chat, "Agent对话功能")
+            self.function_registry.register("create_conversation", create_conversation, "创建会话")
+            self.function_registry.register("get_conversation_history", get_conversation_history, "获取会话历史")
+            logger.debug("Agent functions registered")
+            print("  Agent functions registered", file=sys.stderr, flush=True)
+        except Exception as e:
+            logger.warning(f"Failed to register agent functions: {e}")
+            print(f"  Failed to register agent functions: {e}", file=sys.stderr, flush=True)
+        
+        # 延迟导入并注册知识库相关函数
+        print("  Importing knowledge base functions...", file=sys.stderr, flush=True)
+        try:
+            from core.service.kb_ipc_functions import (
+                kb_search,
+                kb_add_document,
+                kb_delete_document,
+                kb_get_stats
+            )
+            print("  KB functions imported", file=sys.stderr, flush=True)
+            self.function_registry.register("kb_search", kb_search, "知识库检索")
+            self.function_registry.register("kb_add_document", kb_add_document, "添加文档到知识库")
+            self.function_registry.register("kb_delete_document", kb_delete_document, "从知识库删除文档")
+            self.function_registry.register("kb_get_stats", kb_get_stats, "获取知识库统计信息")
+            logger.debug("Knowledge base functions registered")
+            print("  KB functions registered", file=sys.stderr, flush=True)
+        except Exception as e:
+            logger.warning(f"Failed to register knowledge base functions: {e}")
+            print(f"  Failed to register KB functions: {e}", file=sys.stderr, flush=True)
+        
+        # 延迟导入并注册GUI自动化相关函数
+        print("  Importing GUI functions...", file=sys.stderr, flush=True)
+        try:
+            from tools.gui.ipc_functions import (
+                locate_element,
+                click_element,
+                input_text,
+                press_key
+            )
+            print("  GUI functions imported", file=sys.stderr, flush=True)
+            self.function_registry.register("locate_element", locate_element, "定位GUI元素")
+            self.function_registry.register("click_element", click_element, "点击GUI元素")
+            self.function_registry.register("input_text", input_text, "输入文本")
+            self.function_registry.register("press_key", press_key, "按键")
+            logger.debug("GUI automation functions registered")
+            print("  GUI functions registered", file=sys.stderr, flush=True)
+        except Exception as e:
+            logger.warning(f"Failed to register GUI automation functions: {e}")
+            print(f"  Failed to register GUI functions: {e}", file=sys.stderr, flush=True)
+        
+        # 延迟导入并注册工作流相关函数
+        print("  Importing workflow functions...", file=sys.stderr, flush=True)
+        try:
+            from core.workflow.ipc_functions import (
+                execute_workflow,
+                pause_workflow,
+                resume_workflow,
+                cancel_workflow
+            )
+            print("  Workflow functions imported", file=sys.stderr, flush=True)
+            self.function_registry.register("execute_workflow", execute_workflow, "执行工作流")
+            self.function_registry.register("pause_workflow", pause_workflow, "暂停工作流")
+            self.function_registry.register("resume_workflow", resume_workflow, "恢复工作流")
+            self.function_registry.register("cancel_workflow", cancel_workflow, "取消工作流")
+            logger.debug("Workflow functions registered")
+            print("  Workflow functions registered", file=sys.stderr, flush=True)
+        except Exception as e:
+            logger.warning(f"Failed to register workflow functions: {e}")
+            print(f"  Failed to register workflow functions: {e}", file=sys.stderr, flush=True)
+        
+        # 延迟导入并注册录制器相关函数
+        print("  Importing recorder functions...", file=sys.stderr, flush=True)
+        try:
+            from core.recorder.ipc_functions import (
+                start_recording,
+                stop_recording,
+                pause_recording,
+                resume_recording,
+                get_recording_status
+            )
+            print("  Recorder functions imported", file=sys.stderr, flush=True)
+            self.function_registry.register("start_recording", start_recording, "开始录制")
+            self.function_registry.register("stop_recording", stop_recording, "停止录制")
+            self.function_registry.register("pause_recording", pause_recording, "暂停录制")
+            self.function_registry.register("resume_recording", resume_recording, "恢复录制")
+            self.function_registry.register("get_recording_status", get_recording_status, "获取录制状态")
+            logger.debug("Recorder functions registered")
+            print("  Recorder functions registered", file=sys.stderr, flush=True)
+        except Exception as e:
+            logger.warning(f"Failed to register recorder functions: {e}")
+            print(f"  Failed to register recorder functions: {e}", file=sys.stderr, flush=True)
+        
+        logger.info(f"Registered {len(self.function_registry.functions)} functions")
+        print(f"  Total registered: {len(self.function_registry.functions)} functions", file=sys.stderr, flush=True)
+    
+    def start(self):
+        """
+        启动主循环
+        
+        持续从stdin读取请求，处理后通过stdout返回响应
+        """
+        logger.info("Daemon engine started, waiting for requests...")
+        print("Daemon engine started, waiting for requests...", file=sys.stderr, flush=True)
+        
+        try:
+            while self.running:
+                # 从stdin读取一行
+                print("Reading from stdin...", file=sys.stderr, flush=True)
+                line = sys.stdin.readline()
+                print(f"Read line: {line[:100] if line else 'None'}", file=sys.stderr, flush=True)
+                
+                # 如果读取到空行，说明stdin已关闭
+                if not line:
+                    logger.info("stdin closed, exiting...")
+                    break
+                
+                # 去除首尾空白字符
+                line = line.strip()
+                
+                # 跳过空行
+                if not line:
+                    continue
+                
+                # 处理请求
+                self._process_request(line)
+                
+        except KeyboardInterrupt:
+            logger.info("Keyboard interrupt received")
+        except Exception as e:
+            logger.error(f"Unexpected error in main loop: {e}", exc_info=True)
+        finally:
+            self._cleanup()
+    
+    def _process_request(self, line: str):
+        """
+        处理单个请求
+        
+        Args:
+            line: 从stdin读取的JSON字符串
+        """
+        request_id = None
+        
+        try:
+            # 解析JSON请求
+            request = self._parse_request(line)
+            request_id = request.get("id")
+            function_name = request.get("function")
+            args = request.get("args", {})
+            
+            logger.debug(f"Processing request {request_id}: {function_name}")
+            
+            # 执行函数
+            result = self.function_registry.call(function_name, **args)
+            
+            # 发送成功响应
+            response = {
+                "id": request_id,
+                "success": True,
+                "result": result
+            }
+            self._send_response(response)
+            
+            logger.debug(f"Request {request_id} completed successfully")
+            
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON decode error: {e}, line: {line[:100]}")
+            self._send_error_response(request_id, f"Invalid JSON: {str(e)}")
+            
+        except Exception as e:
+            logger.error(f"Error processing request {request_id}: {e}", exc_info=True)
+            self._send_error_response(request_id, str(e))
+    
+    def _parse_request(self, line: str) -> Dict[str, Any]:
+        """
+        解析JSON请求
+        
+        Args:
+            line: JSON字符串
+            
+        Returns:
+            解析后的请求字典
+            
+        Raises:
+            json.JSONDecodeError: JSON解析失败
+            ValueError: 请求格式不正确
+        """
+        request = json.loads(line)
+        
+        # 验证必需字段
+        if "id" not in request:
+            raise ValueError("Missing required field: id")
+        if "function" not in request:
+            raise ValueError("Missing required field: function")
+        
+        return request
+    
+    def _send_response(self, response: Dict[str, Any]):
+        """
+        发送响应到stdout
+        
+        Args:
+            response: 响应字典
+        """
+        try:
+            response_json = json.dumps(response, ensure_ascii=False)
+            sys.stdout.write(response_json + "\n")
+            sys.stdout.flush()
+            
+            logger.debug(f"Response sent: {response.get('id')}")
+            
+        except Exception as e:
+            logger.error(f"Error sending response: {e}", exc_info=True)
+    
+    def _send_error_response(self, request_id: Optional[str], error_message: str):
+        """
+        发送错误响应
+        
+        Args:
+            request_id: 请求ID（可能为None）
+            error_message: 错误消息
+        """
+        response = {
+            "id": request_id or "unknown",
+            "success": False,
+            "error": error_message
+        }
+        self._send_response(response)
+    
+    def stop(self):
+        """
+        停止引擎
+        
+        设置运行标志为False，主循环将在下次迭代时退出
+        """
+        logger.info("Stopping daemon engine...")
+        self.running = False
+    
+    def _cleanup(self):
+        """
+        清理资源
+        
+        在进程退出前执行清理操作
+        """
+        logger.info("Cleaning up resources...")
+        
+        # 这里可以添加其他清理逻辑
+        # 例如：关闭数据库连接、保存状态等
+        
+        logger.info("Daemon engine stopped")
+
+
+def main():
+    """
+    主入口函数
+    """
+    try:
+        engine = DaemonEngine()
+        engine.start()
+    except Exception as e:
+        logger.error(f"Fatal error: {e}", exc_info=True)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

@@ -86,6 +86,16 @@ func (c *RedisCache) Exists(ctx context.Context, key string) (bool, error) {
 	return result > 0, err
 }
 
+// SetWithExpiry 设置带过期时间的缓存（别名方法）
+func (c *RedisCache) SetWithExpiry(ctx context.Context, key string, value string, expiration time.Duration) error {
+	return c.client.Set(ctx, key, value, expiration).Err()
+}
+
+// Increment 原子递增
+func (c *RedisCache) Increment(ctx context.Context, key string) (int64, error) {
+	return c.client.Incr(ctx, key).Result()
+}
+
 // Close 关闭连接
 func (c *RedisCache) Close() error {
 	return c.client.Close()

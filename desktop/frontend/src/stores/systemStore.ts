@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { SystemMetric, SoftwareItem, Alert } from '@/types';
-import { apiService } from '@/services/api';
+import { systemApi } from '@/services/systemApi';
 
 interface SystemStore {
   metrics: SystemMetric | null;
@@ -38,10 +38,16 @@ export const useSystemStore = create<SystemStore>((set, get) => ({
 
   loadSystemInfo: async () => {
     try {
-      const result = await apiService.getSystemInfo();
-      if (result.success && result.data) {
-        set({ metrics: result.data });
-      }
+      const metrics = await systemApi.getSystemMetrics();
+      set({
+        metrics: {
+          cpu: metrics.cpu,
+          memory: metrics.memory,
+          disk: metrics.disk,
+          sidecarStatus: 'running', // TODO: 从引擎获取真实状态
+          alerts: get().metrics?.alerts || [],
+        }
+      });
     } catch (error) {
       console.error('Failed to load system info:', error);
     }
@@ -69,10 +75,8 @@ export const useSystemStore = create<SystemStore>((set, get) => ({
   scanSoftware: async () => {
     set({ isScanning: true });
     try {
-      const result = await apiService.scanSoftware();
-      if (result.success && result.data) {
-        set({ software: result.data });
-      }
+      const software = await systemApi.scanSoftware();
+      set({ software });
     } catch (error) {
       console.error('Failed to scan software:', error);
     } finally {
@@ -83,10 +87,8 @@ export const useSystemStore = create<SystemStore>((set, get) => ({
   loadLogs: async (filter?: { level?: string; limit?: number }) => {
     set({ isLoading: true });
     try {
-      const result = await apiService.getLogs(filter);
-      if (result.success && result.data) {
-        set({ logs: result.data });
-      }
+      const logs = await systemApi.getLogs(filter);
+      set({ logs });
     } catch (error) {
       console.error('Failed to load logs:', error);
     } finally {
@@ -102,9 +104,9 @@ export const useSystemStore = create<SystemStore>((set, get) => ({
     set((state) => ({
       metrics: state.metrics
         ? {
-            ...state.metrics,
-            alerts: [...state.metrics.alerts, alert],
-          }
+          ...state.metrics,
+          alerts: [...state.metrics.alerts, alert],
+        }
         : null,
     }));
   },
@@ -113,9 +115,9 @@ export const useSystemStore = create<SystemStore>((set, get) => ({
     set((state) => ({
       metrics: state.metrics
         ? {
-            ...state.metrics,
-            alerts: state.metrics.alerts.filter((a) => a.id !== id),
-          }
+          ...state.metrics,
+          alerts: state.metrics.alerts.filter((a) => a.id !== id),
+        }
         : null,
     }));
   },
@@ -124,9 +126,9 @@ export const useSystemStore = create<SystemStore>((set, get) => ({
     set((state) => ({
       metrics: state.metrics
         ? {
-            ...state.metrics,
-            alerts: [],
-          }
+          ...state.metrics,
+          alerts: [],
+        }
         : null,
     }));
   },

@@ -2,18 +2,7 @@ import { useState, useEffect } from 'react';
 import { ToolCard } from '@/components/tool/ToolCard';
 import { ToolDetailDialog } from '@/components/tool/ToolDetailDialog';
 import { Button } from '@/components/ui';
-
-interface Tool {
-  id: string;
-  name: string;
-  description: string;
-  type: 'workflow' | 'api' | 'builtin';
-  is_enabled: boolean;
-  usage_count: number;
-  success_rate: number;
-  parameters_schema: any;
-  approval_policy?: 'none' | 'optional' | 'required';
-}
+import { toolApi, type Tool } from '@/services/toolApi';
 
 export default function ToolStorePage() {
   const [tools, setTools] = useState<Tool[]>([]);
@@ -28,14 +17,10 @@ export default function ToolStorePage() {
 
   const loadTools = async () => {
     setLoading(true);
-    
+
     try {
-      const response = await fetch('http://localhost:8000/api/v1/tools');
-      const data = await response.json();
-      
-      if (data.code === 0) {
-        setTools(data.data || []);
-      }
+      const tools = await toolApi.listTools();
+      setTools(tools);
     } catch (err) {
       console.error('Failed to load tools:', err);
     } finally {
@@ -45,17 +30,8 @@ export default function ToolStorePage() {
 
   const handleToggleTool = async (toolId: string, enabled: boolean) => {
     try {
-      const response = await fetch(`http://localhost:8000/api/v1/tools/${toolId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ is_enabled: enabled })
-      });
-
-      const data = await response.json();
-
-      if (data.code === 0) {
-        await loadTools();
-      }
+      await toolApi.updateTool(toolId, { is_enabled: enabled });
+      await loadTools();
     } catch (err) {
       console.error('Failed to toggle tool:', err);
     }
@@ -63,20 +39,12 @@ export default function ToolStorePage() {
 
   const handleUpdatePermission = async (toolId: string, policy: string) => {
     try {
-      const response = await fetch(`http://localhost:8000/api/v1/tools/${toolId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ approval_policy: policy })
-      });
+      await toolApi.updateTool(toolId, { approval_policy: policy });
+      await loadTools();
 
-      const data = await response.json();
-
-      if (data.code === 0) {
-        await loadTools();
-        // 更新当前选中的工具
-        if (selectedTool && selectedTool.id === toolId) {
-          setSelectedTool({ ...selectedTool, approval_policy: policy as any });
-        }
+      // 更新当前选中的工具
+      if (selectedTool && selectedTool.id === toolId) {
+        setSelectedTool({ ...selectedTool, approval_policy: policy as any });
       }
     } catch (err) {
       console.error('Failed to update permission:', err);
@@ -85,7 +53,7 @@ export default function ToolStorePage() {
 
   const filteredTools = tools.filter(tool => {
     const matchesSearch = tool.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         tool.description.toLowerCase().includes(searchQuery.toLowerCase());
+      tool.description.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesType = filterType === 'all' || tool.type === filterType;
     return matchesSearch && matchesType;
   });
@@ -160,17 +128,17 @@ export default function ToolStorePage() {
             </p>
           </div>
         ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredTools.map((tool) => (
-            <ToolCard
-              key={tool.id}
-              tool={tool}
-              onToggle={handleToggleTool}
-              onShowDetails={setSelectedTool}
-            />
-          ))}
-        </div>
-      )}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredTools.map((tool) => (
+              <ToolCard
+                key={tool.id}
+                tool={tool}
+                onToggle={handleToggleTool}
+                onShowDetails={setSelectedTool}
+              />
+            ))}
+          </div>
+        )}
 
         {/* 工具详情对话框 */}
         {selectedTool && (

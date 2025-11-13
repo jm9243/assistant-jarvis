@@ -99,12 +99,44 @@ type UsageStats struct {
 
 // UsageRecord 用量记录
 type UsageRecord struct {
-	ID               string  `json:"id" db:"id"`
-	UserID           string  `json:"user_id" db:"user_id"`
-	Model            string  `json:"model" db:"model"`
-	PromptTokens     int     `json:"prompt_tokens" db:"prompt_tokens"`
-	CompletionTokens int     `json:"completion_tokens" db:"completion_tokens"`
-	TotalTokens      int     `json:"total_tokens" db:"total_tokens"`
-	Cost             float64 `json:"cost" db:"cost"`
-	CreatedAt        string  `json:"created_at" db:"created_at"`
+	ID                string    `json:"id" db:"id"`
+	UserID            string    `json:"user_id" db:"user_id"`
+	AgentID           *string   `json:"agent_id,omitempty" db:"agent_id"`
+	ConversationID    *string   `json:"conversation_id,omitempty" db:"conversation_id"`
+	ModelID           string    `json:"model_id" db:"model_id"`
+	Provider          string    `json:"provider" db:"provider"`
+	Model             string    `json:"model" db:"model"`
+	PromptTokens      int       `json:"prompt_tokens" db:"prompt_tokens"`
+	CompletionTokens  int       `json:"completion_tokens" db:"completion_tokens"`
+	TotalTokens       int       `json:"total_tokens" db:"total_tokens"`
+	Cost              float64   `json:"cost" db:"cost"`
+	RequestDurationMs int       `json:"request_duration_ms" db:"request_duration_ms"`
+	CreatedAt         time.Time `json:"created_at" db:"created_at"`
+}
+
+// UserUsageStats 用户用量统计
+type UserUsageStats struct {
+	UserID           string    `json:"user_id"`
+	TotalTokens      int       `json:"total_tokens"`
+	PromptTokens     int       `json:"prompt_tokens"`
+	CompletionTokens int       `json:"completion_tokens"`
+	TotalCost        float64   `json:"total_cost"`
+	RequestCount     int       `json:"request_count"`
+	StartTime        time.Time `json:"start_time"`
+	EndTime          time.Time `json:"end_time"`
+}
+
+// ModelUsageStats 模型用量统计
+type ModelUsageStats struct {
+	ModelID          string    `json:"model_id"`
+	Provider         string    `json:"provider"`
+	Model            string    `json:"model"`
+	TotalTokens      int       `json:"total_tokens"`
+	PromptTokens     int       `json:"prompt_tokens"`
+	CompletionTokens int       `json:"completion_tokens"`
+	TotalCost        float64   `json:"total_cost"`
+	RequestCount     int       `json:"request_count"`
+	UniqueUsers      int       `json:"unique_users"`
+	StartTime        time.Time `json:"start_time"`
+	EndTime          time.Time `json:"end_time"`
 }

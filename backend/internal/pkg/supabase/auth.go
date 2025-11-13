@@ -39,7 +39,7 @@ type SignInRequest struct {
 	Password string `json:"password"`
 }
 
-// AuthAPIResponse Supabase Auth API 响应
+// AuthAPIResponse Supabase Auth API 响应（登录时）
 type AuthAPIResponse struct {
 	AccessToken  string `json:"access_token"`
 	TokenType    string `json:"token_type"`
@@ -49,6 +49,23 @@ type AuthAPIResponse struct {
 		ID    string `json:"id"`
 		Email string `json:"email"`
 	} `json:"user"`
+}
+
+// SignUpAPIResponse Supabase Auth 注册响应
+type SignUpAPIResponse struct {
+	// 需要邮箱确认时的字段
+	ID                 string `json:"id,omitempty"`
+	Email              string `json:"email,omitempty"`
+	ConfirmationSentAt string `json:"confirmation_sent_at,omitempty"`
+	
+	// 不需要邮箱确认时的字段
+	AccessToken  string `json:"access_token,omitempty"`
+	RefreshToken string `json:"refresh_token,omitempty"`
+	ExpiresIn    int    `json:"expires_in,omitempty"`
+	User         *struct {
+		ID    string `json:"id"`
+		Email string `json:"email"`
+	} `json:"user,omitempty"`
 }
 
 // SignUp 用户注册
@@ -86,19 +103,35 @@ func (c *SupabaseAuthClient) SignUp(email, password string) (*AuthResponse, erro
 		return nil, fmt.Errorf("signup failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
-	var apiResp AuthAPIResponse
-	if err := json.Unmarshal(body, &apiResp); err != nil {
+	// 尝试解析注册响应
+	var signUpResp SignUpAPIResponse
+	if err := json.Unmarshal(body, &signUpResp); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+
+	// 检查响应格式（两种可能：需要确认 vs 不需要确认）
+	var userID, userEmail string
+	
+	if signUpResp.User != nil {
+		// 不需要邮箱确认的响应格式
+		userID = signUpResp.User.ID
+		userEmail = signUpResp.User.Email
+	} else if signUpResp.ID != "" {
+		// 需要邮箱确认的响应格式
+		userID = signUpResp.ID
+		userEmail = signUpResp.Email
+	} else {
+		return nil, fmt.Errorf("signup response missing user ID")
 	}
 
 	return &AuthResponse{
 		User: &AuthUser{
-			ID:    apiResp.User.ID,
-			Email: apiResp.User.Email,
+			ID:    userID,
+			Email: userEmail,
 		},
-		AccessToken:  apiResp.AccessToken,
-		RefreshToken: apiResp.RefreshToken,
-		ExpiresIn:    apiResp.ExpiresIn,
+		AccessToken:  signUpResp.AccessToken,
+		RefreshToken: signUpResp.RefreshToken,
+		ExpiresIn:    signUpResp.ExpiresIn,
 	}, nil
 }
 
@@ -137,19 +170,25 @@ func (c *SupabaseAuthClient) SignIn(email, password string) (*AuthResponse, erro
 		return nil, fmt.Errorf("signin failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
-	var apiResp AuthAPIResponse
-	if err := json.Unmarshal(body, &apiResp); err != nil {
+	// 登录响应格式（与注册类似）
+	var signInResp SignUpAPIResponse
+	if err := json.Unmarshal(body, &signInResp); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+
+	// 检查是否有用户信息
+	if signInResp.User == nil {
+		return nil, fmt.Errorf("signin response missing user info")
 	}
 
 	return &AuthResponse{
 		User: &AuthUser{
-			ID:    apiResp.User.ID,
-			Email: apiResp.User.Email,
+			ID:    signInResp.User.ID,
+			Email: signInResp.User.Email,
 		},
-		AccessToken:  apiResp.AccessToken,
-		RefreshToken: apiResp.RefreshToken,
-		ExpiresIn:    apiResp.ExpiresIn,
+		AccessToken:  signInResp.AccessToken,
+		RefreshToken: signInResp.RefreshToken,
+		ExpiresIn:    signInResp.ExpiresIn,
 	}, nil
 }
 

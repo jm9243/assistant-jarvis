@@ -17,6 +17,7 @@ type Config struct {
 	SupabaseURL       string
 	SupabaseKey       string
 	SupabaseJWTSecret string
+	DatabaseURL       string
 
 	// Redis 配置
 	RedisURL      string

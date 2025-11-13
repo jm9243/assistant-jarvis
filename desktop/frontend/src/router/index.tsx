@@ -1,6 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { LoginPage } from '@/pages/Auth/LoginPage';
+import { RegisterPage } from '@/pages/Auth/RegisterPage';
 import { DashboardLayout } from '@/pages/Layout/DashboardLayout';
 import { DashboardPage } from '@/pages/Dashboard/DashboardPage';
 import { WorkflowDesignerPage } from '@/pages/Workflow/WorkflowDesignerPage';
@@ -34,6 +35,10 @@ export const router = createBrowserRouter([
   {
     path: '/login',
     element: <LoginPage />,
+  },
+  {
+    path: '/register',
+    element: <RegisterPage />,
   },
   {
     path: '/dashboard',

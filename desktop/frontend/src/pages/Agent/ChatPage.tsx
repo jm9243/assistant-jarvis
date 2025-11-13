@@ -3,8 +3,10 @@ import { useParams } from 'react-router-dom';
 import { MessageBubble } from '@/components/chat/MessageBubble';
 import { ChatInput } from '@/components/chat/ChatInput';
 import { useAgentStore } from '@/stores/agentStore';
-import { createSSEClient, SSEClient } from '@/services/sseClient';
+import { SSEClient } from '@/services/sseClient';
 import { Button } from '@/components/ui';
+import { pythonEngine } from '@/services/python';
+import { backend } from '@/services/backend';
 
 interface Conversation {
   id: string;
@@ -26,9 +28,20 @@ export default function ChatPage() {
   const { agentId } = useParams<{ agentId: string }>();
   const { agents, fetchAgents } = useAgentStore();
 
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [conversations, setConversations] = useState<Conversation[]>(() => {
+    // 从localStorage恢复会话列表
+    const saved = localStorage.getItem(`conversations_${agentId}`);
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [currentConversationId, setCurrentConversationId] = useState<string | null>(() => {
+    // 从localStorage恢复当前会话ID
+    return localStorage.getItem(`current_conversation_${agentId}`);
+  });
+  const [messages, setMessages] = useState<Message[]>(() => {
+    // 从localStorage恢复消息
+    const saved = localStorage.getItem(`messages_${currentConversationId}`);
+    return saved ? JSON.parse(saved) : [];
+  });
   const [isLoadingConversations, setIsLoadingConversations] = useState(true);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -53,26 +66,33 @@ export default function ChatPage() {
   useEffect(() => {
     if (currentConversationId) {
       loadMessages(currentConversationId);
+      // 保存当前会话ID
+      localStorage.setItem(`current_conversation_${agentId}`, currentConversationId);
     }
-
   }, [currentConversationId]);
 
   const loadConversations = async () => {
     setIsLoadingConversations(true);
     try {
-      const response = await fetch(`http://localhost:8000/api/v1/conversations?agent_id=${agentId}`);
-      const data = await response.json();
+      // 使用Go后台API获取会话列表（云端同步）
+      const data = await backend.getConversations(agentId!);
+      setConversations(data || []);
 
-      if (data.code === 0) {
-        setConversations(data.data || []);
+      // 保存到localStorage
+      localStorage.setItem(`conversations_${agentId}`, JSON.stringify(data || []));
 
-        // 如果有会话，自动选择第一个
-        if (data.data && data.data.length > 0 && !currentConversationId) {
-          setCurrentConversationId(data.data[0].id);
-        }
+      // 如果有会话，自动选择第一个
+      if (data && data.length > 0 && !currentConversationId) {
+        setCurrentConversationId(data[0].id);
+        localStorage.setItem(`current_conversation_${agentId}`, data[0].id);
       }
     } catch (error) {
       console.error('Failed to load conversations:', error);
+      // 如果加载失败，使用localStorage中的数据
+      const saved = localStorage.getItem(`conversations_${agentId}`);
+      if (saved) {
+        setConversations(JSON.parse(saved));
+      }
     } finally {
       setIsLoadingConversations(false);
     }
@@ -81,14 +101,25 @@ export default function ChatPage() {
   const loadMessages = async (conversationId: string) => {
     setIsLoadingMessages(true);
     try {
-      const response = await fetch(`http://localhost:8000/api/v1/conversations/${conversationId}/messages`);
-      const data = await response.json();
+      // 使用Python引擎获取对话历史
+      const messages = await pythonEngine.getConversationHistory(conversationId);
+      const formattedMessages = messages.map(msg => ({
+        id: msg.id,
+        role: msg.role,
+        content: msg.content,
+        created_at: msg.timestamp
+      }));
+      setMessages(formattedMessages);
 
-      if (data.code === 0) {
-        setMessages(data.data || []);
-      }
+      // 保存到localStorage
+      localStorage.setItem(`messages_${conversationId}`, JSON.stringify(formattedMessages));
     } catch (error) {
       console.error('Failed to load messages:', error);
+      // 如果加载失败，使用localStorage中的数据
+      const saved = localStorage.getItem(`messages_${conversationId}`);
+      if (saved) {
+        setMessages(JSON.parse(saved));
+      }
     } finally {
       setIsLoadingMessages(false);
     }
@@ -96,22 +127,13 @@ export default function ChatPage() {
 
   const handleNewConversation = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/v1/conversations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          agent_id: agentId,
-          title: '新对话'
-        })
-      });
-
-      const data = await response.json();
-
-      if (data.code === 0) {
-        await loadConversations();
-        setCurrentConversationId(data.data.id);
-        setMessages([]);
-      }
+      // 使用Python引擎创建新会话
+      const conversation = await pythonEngine.createConversation(agentId!);
+      await loadConversations();
+      setCurrentConversationId(conversation.conversation_id);
+      localStorage.setItem(`current_conversation_${agentId}`, conversation.conversation_id);
+      setMessages([]);
+      localStorage.removeItem(`messages_${conversation.conversation_id}`);
     } catch (error) {
       console.error('Failed to create conversation:', error);
     }
@@ -121,21 +143,20 @@ export default function ChatPage() {
     if (!confirm('确定要删除这个会话吗？')) return;
 
     try {
-      const response = await fetch(`http://localhost:8000/api/v1/conversations/${conversationId}`, {
-        method: 'DELETE'
-      });
+      // 使用Go后台API删除会话（云端同步）
+      await backend.deleteConversation(conversationId);
 
-      const data = await response.json();
+      // 清理localStorage
+      localStorage.removeItem(`messages_${conversationId}`);
 
-      if (data.code === 0) {
-        // 如果删除的是当前会话，清空选择
-        if (currentConversationId === conversationId) {
-          setCurrentConversationId(null);
-          setMessages([]);
-        }
-
-        await loadConversations();
+      // 如果删除的是当前会话，清空选择
+      if (currentConversationId === conversationId) {
+        setCurrentConversationId(null);
+        localStorage.removeItem(`current_conversation_${agentId}`);
+        setMessages([]);
       }
+
+      await loadConversations();
     } catch (error) {
       console.error('Failed to delete conversation:', error);
     }
@@ -172,69 +193,39 @@ export default function ChatPage() {
     setMessages(prev => [...prev, assistantMessage]);
     setIsStreaming(true);
 
-    // 创建SSE客户端
-    const sseClient = createSSEClient();
-    sseClientRef.current = sseClient;
-
     try {
-      await sseClient.stream(
-        `http://localhost:8000/api/v1/conversations/${currentConversationId}/messages`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            content,
-            attachments,
-            stream: true
-          }),
-          onMessage: (data) => {
-            if (data.type === 'token' && data.content) {
-              // 实时更新消息内容（打字机效果）
-              assistantMessage.content += data.content;
-              setMessages(prev => {
-                const newMessages = [...prev];
-                newMessages[newMessages.length - 1] = { ...assistantMessage };
-                return newMessages;
-              });
-            } else if (data.type === 'done' && data.content) {
-              // 完成时设置最终内容
-              assistantMessage.content = data.content;
-              setMessages(prev => {
-                const newMessages = [...prev];
-                newMessages[newMessages.length - 1] = { ...assistantMessage };
-                return newMessages;
-              });
-            } else if (data.type === 'error') {
-              console.error('Stream error:', data.message);
-              assistantMessage.content = `抱歉，发生错误：${data.message}`;
-              setMessages(prev => {
-                const newMessages = [...prev];
-                newMessages[newMessages.length - 1] = { ...assistantMessage };
-                return newMessages;
-              });
-            }
-          },
-          onError: (error) => {
-            console.error('Failed to send message:', error);
-            assistantMessage.content = '抱歉，发送消息失败。请稍后重试。';
-            setMessages(prev => {
-              const newMessages = [...prev];
-              newMessages[newMessages.length - 1] = { ...assistantMessage };
-              return newMessages;
-            });
-          },
-          onComplete: () => {
-            setIsStreaming(false);
-            sseClientRef.current = null;
-            // 刷新会话列表（更新时间）
-            loadConversations();
-          }
-        }
+      // 使用Python引擎进行对话（非流式）
+      const response = await pythonEngine.agentChat(
+        currentConversationId,
+        content,
+        false // 暂时使用非流式，后续可以实现流式支持
       );
+
+      // 更新助手消息
+      assistantMessage.content = response.message;
+      assistantMessage.id = `msg-${Date.now()}`;
+      setMessages(prev => {
+        const newMessages = [...prev];
+        newMessages[newMessages.length - 1] = { ...assistantMessage };
+
+        // 保存到localStorage
+        localStorage.setItem(`messages_${currentConversationId}`, JSON.stringify(newMessages));
+
+        return newMessages;
+      });
+
+      // 刷新会话列表（更新时间）
+      loadConversations();
     } catch (error) {
       console.error('Failed to send message:', error);
+      assistantMessage.content = '抱歉，发送消息失败。请稍后重试。';
+      setMessages(prev => {
+        const newMessages = [...prev];
+        newMessages[newMessages.length - 1] = { ...assistantMessage };
+        return newMessages;
+      });
+    } finally {
       setIsStreaming(false);
-      sseClientRef.current = null;
     }
   };
 
@@ -250,25 +241,21 @@ export default function ChatPage() {
     if (!currentConversationId) return;
 
     try {
-      const response = await fetch(
-        `http://localhost:8000/api/v1/conversations/${currentConversationId}/export?format=json`
-      );
-      const data = await response.json();
+      // 使用Go后台API导出会话
+      const data = await backend.exportConversation(currentConversationId);
 
-      if (data.code === 0) {
-        // 创建下载链接
-        const blob = new Blob([JSON.stringify(data.data, null, 2)], {
-          type: 'application/json'
-        });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `conversation-${currentConversationId}-${Date.now()}.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      }
+      // 创建下载链接
+      const blob = new Blob([JSON.stringify(data, null, 2)], {
+        type: 'application/json'
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `conversation-${currentConversationId}-${Date.now()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
     } catch (error) {
       console.error('Failed to export conversation:', error);
       alert('导出失败，请稍后重试');
@@ -283,20 +270,9 @@ export default function ChatPage() {
     if (!newTitle || newTitle === currentConv.title) return;
 
     try {
-      const response = await fetch(
-        `http://localhost:8000/api/v1/conversations/${conversationId}`,
-        {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title: newTitle })
-        }
-      );
-
-      const data = await response.json();
-
-      if (data.code === 0) {
-        await loadConversations();
-      }
+      // 使用Go后台API重命名会话
+      await backend.updateConversation(conversationId, { title: newTitle });
+      await loadConversations();
     } catch (error) {
       console.error('Failed to rename conversation:', error);
       alert('重命名失败，请稍后重试');

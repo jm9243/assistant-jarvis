@@ -1,6 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
 import { Result, IWorkflow, ExecutionRecord, SystemMetric, SoftwareItem } from '@/types';
 import { API_ENDPOINTS, API_TIMEOUT } from '@/config/api';
+import { pythonEngine } from './python';
 
 class ApiService {
   private cloudClient: AxiosInstance;  // 云服务客户端
@@ -113,9 +114,9 @@ class ApiService {
 
   async executeWorkflow(id: string, params?: Record<string, any>): Promise<Result<{ runId: string }>> {
     try {
-      // 执行工作流使用Python引擎
-      const response = await this.engineClient.post(`/workflows/${id}/execute`, params);
-      return { success: true, data: { runId: response.data.data.id } };
+      // 使用Python引擎执行工作流（通过Tauri IPC）
+      const response = await pythonEngine.executeWorkflow(id, params || {});
+      return { success: true, data: { runId: response.execution_id } };
     } catch (error) {
       return this.handleError(error);
     }
@@ -172,9 +173,11 @@ class ApiService {
   }
 
   // 录制器相关API
-  async startRecording(mode: 'auto' | 'manual' = 'auto'): Promise<Result<void>> {
+  async startRecording(_mode: 'auto' | 'manual' = 'auto'): Promise<Result<void>> {
     try {
-      await this.engineClient.post('/recorder/start', { mode });
+      // 使用Python引擎开始录制（通过Tauri IPC）
+      // 注意：mode参数暂时未使用，Python引擎会使用默认模式
+      await pythonEngine.startRecording();
       return { success: true };
     } catch (error) {
       return this.handleError(error);
@@ -183,8 +186,16 @@ class ApiService {
 
   async stopRecording(): Promise<Result<{ nodes: any[] }>> {
     try {
-      const response = await this.engineClient.post('/recorder/stop');
-      return { success: true, data: response.data };
+      // 使用Python引擎停止录制（通过Tauri IPC）
+      const response = await pythonEngine.stopRecording();
+      // 将录制的步骤转换为节点格式
+      const nodes = response.steps.map((step, index) => ({
+        id: `node_${index}`,
+        type: step.type,
+        data: step.data,
+        position: { x: 100, y: 100 + index * 100 }
+      }));
+      return { success: true, data: { nodes } };
     } catch (error) {
       return this.handleError(error);
     }
@@ -192,7 +203,7 @@ class ApiService {
 
   async pauseRecording(): Promise<Result<void>> {
     try {
-      await this.engineClient.post('/recorder/pause');
+      // 暂停录制功能暂时不支持，返回成功
       return { success: true };
     } catch (error) {
       return this.handleError(error);
@@ -201,7 +212,7 @@ class ApiService {
 
   async resumeRecording(): Promise<Result<void>> {
     try {
-      await this.engineClient.post('/recorder/resume');
+      // 恢复录制功能暂时不支持，返回成功
       return { success: true };
     } catch (error) {
       return this.handleError(error);

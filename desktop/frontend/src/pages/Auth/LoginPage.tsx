@@ -188,7 +188,10 @@ export function LoginPage() {
           {/* 注册链接 */}
           <div className="mt-6 text-center text-sm text-jarvis-text-secondary">
             还没有账号？
-            <button className="ml-1 text-jarvis-gold hover:underline" onClick={() => alert('注册功能开发中')}>
+            <button
+              className="ml-1 text-jarvis-gold hover:underline"
+              onClick={() => navigate('/register')}
+            >
               立即注册
             </button>
           </div>

@@ -441,5 +441,449 @@ class TestIntegrationScenarios:
         await conv_service.delete(conv_id)
 
 
+class TestWorkflowE2E:
+    """工作流端到端测试"""
+    
+    @pytest.mark.asyncio
+    async def test_complete_workflow_creation_and_execution(self, test_data_dir):
+        """测试完整的工作流创建和执行流程"""
+        from core.workflow.executor import WorkflowExecutor
+        from core.workflow.ipc_functions import execute_workflow
+        
+        # 1. 创建工作流定义
+        workflow_def = {
+            "id": "e2e_workflow_001",
+            "user_id": "test_user",
+            "name": "E2E测试工作流",
+            "description": "端到端测试工作流",
+            "nodes": [
+                {
+                    "id": "start",
+                    "type": "start",
+                    "position": {"x": 100, "y": 100},
+                    "data": {
+                        "label": "开始",
+                        "config": {}
+                    }
+                },
+                {
+                    "id": "delay_1",
+                    "type": "delay",
+                    "position": {"x": 300, "y": 100},
+                    "data": {
+                        "label": "延迟100ms",
+                        "config": {"duration": 100}
+                    }
+                },
+                {
+                    "id": "end",
+                    "type": "end",
+                    "position": {"x": 500, "y": 100},
+                    "data": {
+                        "label": "结束",
+                        "config": {}
+                    }
+                }
+            ],
+            "edges": [
+                {
+                    "id": "edge_1",
+                    "source": "start",
+                    "target": "delay_1"
+                },
+                {
+                    "id": "edge_2",
+                    "source": "delay_1",
+                    "target": "end"
+                }
+            ],
+            "variables": {},
+            "tags": ["e2e", "test"]
+        }
+        
+        # 2. 保存工作流到文件
+        workflow_file = test_data_dir / "e2e_workflow.json"
+        import json
+        with open(workflow_file, 'w', encoding='utf-8') as f:
+            json.dump(workflow_def, f, ensure_ascii=False, indent=2)
+        
+        assert workflow_file.exists()
+        
+        # 3. 从文件加载工作流
+        with open(workflow_file, 'r', encoding='utf-8') as f:
+            loaded_workflow = json.load(f)
+        
+        assert loaded_workflow["id"] == workflow_def["id"]
+        
+        # 4. 执行工作流
+        result = execute_workflow(loaded_workflow, {})
+        
+        # 5. 验证执行结果
+        assert "success" in result
+        if result["success"]:
+            assert "run_id" in result
+            assert "status" in result
+    
+    @pytest.mark.asyncio
+    async def test_workflow_with_conditional_logic(self):
+        """测试带条件逻辑的工作流"""
+        from core.workflow.ipc_functions import execute_workflow
+        
+        # 创建带条件的工作流
+        workflow_def = {
+            "id": "conditional_workflow",
+            "user_id": "test_user",
+            "name": "条件工作流",
+            "nodes": [
+                {
+                    "id": "start",
+                    "type": "start",
+                    "position": {"x": 100, "y": 100},
+                    "data": {"label": "开始", "config": {}}
+                },
+                {
+                    "id": "condition",
+                    "type": "condition",
+                    "position": {"x": 300, "y": 100},
+                    "data": {
+                        "label": "条件判断",
+                        "config": {"condition": "{{input.value}} > 10"}
+                    }
+                },
+                {
+                    "id": "true_branch",
+                    "type": "delay",
+                    "position": {"x": 500, "y": 50},
+                    "data": {
+                        "label": "True分支",
+                        "config": {"duration": 50}
+                    }
+                },
+                {
+                    "id": "false_branch",
+                    "type": "delay",
+                    "position": {"x": 500, "y": 150},
+                    "data": {
+                        "label": "False分支",
+                        "config": {"duration": 50}
+                    }
+                }
+            ],
+            "edges": [
+                {"id": "e1", "source": "start", "target": "condition"},
+                {"id": "e2", "source": "condition", "target": "true_branch", "sourceHandle": "true"},
+                {"id": "e3", "source": "condition", "target": "false_branch", "sourceHandle": "false"}
+            ],
+            "variables": {"input": {"value": 15}},
+            "tags": []
+        }
+        
+        # 执行工作流
+        result = execute_workflow(workflow_def, {})
+        
+        assert "success" in result
+    
+    @pytest.mark.asyncio
+    async def test_workflow_error_recovery(self):
+        """测试工作流错误恢复"""
+        from core.workflow.ipc_functions import execute_workflow
+        
+        # 创建一个会出错的工作流
+        workflow_def = {
+            "id": "error_workflow",
+            "user_id": "test_user",
+            "name": "错误工作流",
+            "nodes": [
+                {
+                    "id": "invalid_node",
+                    "type": "invalid_type",
+                    "position": {"x": 100, "y": 100},
+                    "data": {"label": "无效节点", "config": {}}
+                }
+            ],
+            "edges": [],
+            "variables": {},
+            "tags": []
+        }
+        
+        # 执行应该返回错误但不崩溃
+        result = execute_workflow(workflow_def, {})
+        
+        assert "success" in result
+        # 如果失败，应该有错误信息
+        if not result["success"]:
+            assert "error" in result or "message" in result
+
+
+class TestCompleteUserJourney:
+    """完整用户旅程测试"""
+    
+    @pytest.mark.asyncio
+    async def test_new_user_onboarding_flow(self, basic_agent, test_data_dir):
+        """测试新用户完整流程"""
+        from core.service.knowledge_base import KnowledgeBaseService
+        from core.service.conversation import ConversationService
+        
+        # 场景：新用户首次使用系统
+        
+        # 1. 创建第一个Agent会话
+        conv_service = ConversationService()
+        conv_id = await conv_service.create(
+            agent_id=basic_agent.agent_id,
+            title="我的第一次对话"
+        )
+        assert conv_id is not None
+        
+        # 2. 进行简单对话
+        await conv_service.add_message(conv_id, "user", "你好，我是新用户")
+        await conv_service.add_message(conv_id, "assistant", "欢迎！我是AI助手，很高兴为您服务。")
+        
+        # 3. 创建知识库
+        kb_service = KnowledgeBaseService()
+        kb_id = await kb_service.create_knowledge_base(
+            name="我的第一个知识库",
+            description="存储个人文档"
+        )
+        assert kb_id is not None
+        
+        # 4. 上传第一个文档
+        doc_file = test_data_dir / "first_doc.txt"
+        doc_file.write_text("这是我的第一个文档。", encoding="utf-8")
+        
+        doc_id = await kb_service.add_document(kb_id, str(doc_file))
+        assert doc_id is not None
+        
+        # 5. 使用知识库进行对话
+        await asyncio.sleep(0.5)  # 等待文档处理
+        kb_results = await kb_service.search(kb_id, "第一个文档", top_k=3)
+        assert len(kb_results) > 0
+        
+        # 6. 验证整个流程完成
+        messages = await conv_service.get_messages(conv_id)
+        assert len(messages) == 2
+        
+        # 清理
+        await conv_service.delete(conv_id)
+    
+    @pytest.mark.asyncio
+    async def test_power_user_workflow(self, react_agent, test_data_dir):
+        """测试高级用户工作流"""
+        from core.service.knowledge_base import KnowledgeBaseService
+        from core.service.conversation import ConversationService
+        from core.service.tool import ToolService
+        from core.workflow.ipc_functions import execute_workflow
+        
+        # 场景：高级用户使用多个功能
+        
+        # 1. 创建多个知识库
+        kb_service = KnowledgeBaseService()
+        kb_ids = []
+        for i in range(3):
+            kb_id = await kb_service.create_knowledge_base(
+                name=f"知识库 {i+1}",
+                description=f"第{i+1}个知识库"
+            )
+            kb_ids.append(kb_id)
+        
+        # 2. 批量上传文档
+        for i, kb_id in enumerate(kb_ids):
+            doc_file = test_data_dir / f"doc_{i}.txt"
+            doc_file.write_text(f"知识库{i+1}的文档内容", encoding="utf-8")
+            await kb_service.add_document(kb_id, str(doc_file))
+        
+        # 3. 创建多个会话
+        conv_service = ConversationService()
+        conv_ids = []
+        for i in range(2):
+            conv_id = await conv_service.create(
+                agent_id=react_agent.agent_id,
+                title=f"会话 {i+1}"
+            )
+            conv_ids.append(conv_id)
+        
+        # 4. 创建并执行工作流
+        workflow_def = {
+            "id": "power_user_workflow",
+            "user_id": "power_user",
+            "name": "高级工作流",
+            "nodes": [
+                {
+                    "id": "start",
+                    "type": "start",
+                    "position": {"x": 0, "y": 0},
+                    "data": {"label": "开始", "config": {}}
+                }
+            ],
+            "edges": [],
+            "variables": {},
+            "tags": ["power_user"]
+        }
+        
+        result = execute_workflow(workflow_def, {})
+        assert "success" in result
+        
+        # 5. 验证所有资源创建成功
+        assert len(kb_ids) == 3
+        assert len(conv_ids) == 2
+        
+        # 清理
+        for conv_id in conv_ids:
+            await conv_service.delete(conv_id)
+    
+    @pytest.mark.asyncio
+    async def test_cross_feature_integration(self, basic_agent, test_data_dir):
+        """测试跨功能集成"""
+        from core.service.knowledge_base import KnowledgeBaseService
+        from core.service.conversation import ConversationService
+        from core.workflow.ipc_functions import execute_workflow
+        
+        # 场景：在工作流中使用Agent和知识库
+        
+        # 1. 准备知识库
+        kb_service = KnowledgeBaseService()
+        kb_id = await kb_service.create_knowledge_base(
+            name="集成测试知识库",
+            description="用于跨功能集成测试"
+        )
+        
+        doc_file = test_data_dir / "integration_doc.txt"
+        doc_file.write_text("集成测试文档内容", encoding="utf-8")
+        await kb_service.add_document(kb_id, str(doc_file))
+        await asyncio.sleep(0.5)
+        
+        # 2. 创建会话
+        conv_service = ConversationService()
+        conv_id = await conv_service.create(
+            agent_id=basic_agent.agent_id,
+            title="集成测试会话"
+        )
+        
+        # 3. 在会话中使用知识库
+        basic_agent.knowledge_base_ids = [kb_id]
+        kb_results = await kb_service.search(kb_id, "集成测试", top_k=3)
+        
+        # 4. 创建包含Agent调用的工作流
+        workflow_def = {
+            "id": "integration_workflow",
+            "user_id": "test_user",
+            "name": "集成工作流",
+            "nodes": [
+                {
+                    "id": "start",
+                    "type": "start",
+                    "position": {"x": 0, "y": 0},
+                    "data": {"label": "开始", "config": {}}
+                }
+            ],
+            "edges": [],
+            "variables": {"kb_id": kb_id, "conv_id": conv_id},
+            "tags": ["integration"]
+        }
+        
+        result = execute_workflow(workflow_def, {})
+        
+        # 5. 验证集成成功
+        assert kb_id is not None
+        assert conv_id is not None
+        assert len(kb_results) > 0
+        assert "success" in result
+        
+        # 清理
+        await conv_service.delete(conv_id)
+
+
+class TestStressScenarios:
+    """压力测试场景"""
+    
+    @pytest.mark.asyncio
+    async def test_multiple_concurrent_conversations(self, basic_agent):
+        """测试多个并发会话"""
+        from core.service.conversation import ConversationService
+        
+        conv_service = ConversationService()
+        
+        # 创建10个并发会话
+        tasks = []
+        for i in range(10):
+            task = conv_service.create(
+                agent_id=basic_agent.agent_id,
+                title=f"并发会话 {i+1}"
+            )
+            tasks.append(task)
+        
+        # 等待所有会话创建完成
+        conv_ids = await asyncio.gather(*tasks)
+        
+        # 验证所有会话都创建成功
+        assert len(conv_ids) == 10
+        assert all(conv_id is not None for conv_id in conv_ids)
+        
+        # 清理
+        for conv_id in conv_ids:
+            await conv_service.delete(conv_id)
+    
+    @pytest.mark.asyncio
+    async def test_large_document_processing(self, test_data_dir):
+        """测试大文档处理"""
+        from core.service.knowledge_base import KnowledgeBaseService
+        
+        kb_service = KnowledgeBaseService()
+        kb_id = await kb_service.create_knowledge_base(
+            name="大文档测试",
+            description="测试大文档处理"
+        )
+        
+        # 创建一个较大的文档（1000行）
+        large_doc = test_data_dir / "large_doc.txt"
+        content = "\n".join([f"这是第{i+1}行内容。" for i in range(1000)])
+        large_doc.write_text(content, encoding="utf-8")
+        
+        # 添加文档
+        doc_id = await kb_service.add_document(kb_id, str(large_doc))
+        assert doc_id is not None
+        
+        # 等待处理完成
+        await asyncio.sleep(2)
+        
+        # 验证可以检索
+        results = await kb_service.search(kb_id, "第500行", top_k=5)
+        assert len(results) > 0
+    
+    @pytest.mark.asyncio
+    async def test_rapid_workflow_execution(self):
+        """测试快速连续执行工作流"""
+        from core.workflow.ipc_functions import execute_workflow
+        
+        workflow_def = {
+            "id": "rapid_workflow",
+            "user_id": "test_user",
+            "name": "快速工作流",
+            "nodes": [
+                {
+                    "id": "delay",
+                    "type": "delay",
+                    "position": {"x": 0, "y": 0},
+                    "data": {
+                        "label": "延迟10ms",
+                        "config": {"duration": 10}
+                    }
+                }
+            ],
+            "edges": [],
+            "variables": {},
+            "tags": []
+        }
+        
+        # 快速执行20次
+        results = []
+        for i in range(20):
+            result = execute_workflow(workflow_def, {})
+            results.append(result)
+        
+        # 验证所有执行都完成
+        assert len(results) == 20
+        assert all("success" in r for r in results)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-s"])

@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { DocumentUpload } from '@/components/knowledge-base/DocumentUpload';
 import { Button } from '@/components/ui';
+import { pythonEngine } from '@/services/python';
+import { backend } from '@/services/backend';
 
 interface Document {
   id: string;
@@ -27,7 +29,7 @@ interface KnowledgeBase {
 export default function KnowledgeBaseDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  
+
   const [knowledgeBase, setKnowledgeBase] = useState<KnowledgeBase | null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,30 +47,22 @@ export default function KnowledgeBaseDetailPage() {
 
   const loadKnowledgeBase = async () => {
     try {
-      const response = await fetch(`http://localhost:8000/api/v1/knowledge-bases/${id}`);
-      const data = await response.json();
-      
-      if (data.code === 0) {
-        setKnowledgeBase(data.data);
-      } else {
-        setError(data.message || '加载失败');
-      }
+      // 使用Go后台API获取知识库信息（元数据存储在云端）
+      const data = await backend.getKnowledgeBase(id!);
+      setKnowledgeBase(data);
     } catch (err) {
-      setError('网络错误');
+      setError('加载知识库失败');
       console.error('Failed to load knowledge base:', err);
     }
   };
 
   const loadDocuments = async () => {
     setLoading(true);
-    
+
     try {
-      const response = await fetch(`http://localhost:8000/api/v1/knowledge-bases/${id}/documents`);
-      const data = await response.json();
-      
-      if (data.code === 0) {
-        setDocuments(data.data || []);
-      }
+      // 使用Go后台API获取文档列表
+      const data = await backend.getKnowledgeBaseDocuments(id!);
+      setDocuments(data || []);
     } catch (err) {
       console.error('Failed to load documents:', err);
     } finally {
@@ -80,19 +74,10 @@ export default function KnowledgeBaseDetailPage() {
     if (!confirm('确定要删除这个文档吗？')) return;
 
     try {
-      const response = await fetch(
-        `http://localhost:8000/api/v1/knowledge-bases/${id}/documents/${docId}`,
-        { method: 'DELETE' }
-      );
-      
-      const data = await response.json();
-      
-      if (data.code === 0) {
-        await loadDocuments();
-        await loadKnowledgeBase();
-      } else {
-        alert(data.message || '删除失败');
-      }
+      // 使用Go后台API删除文档
+      await backend.deleteKnowledgeBaseDocument(id!, docId);
+      await loadDocuments();
+      await loadKnowledgeBase();
     } catch (err) {
       alert('删除失败');
       console.error('Failed to delete document:', err);
@@ -200,7 +185,7 @@ export default function KnowledgeBaseDetailPage() {
               </svg>
             }
           />
-          
+
           <div>
             <h1 className="text-xl font-bold text-jarvis-text">{knowledgeBase.name}</h1>
             <p className="text-sm text-jarvis-text-secondary mt-1">
@@ -232,7 +217,7 @@ export default function KnowledgeBaseDetailPage() {
           >
             测试检索
           </Button>
-          
+
           <Button
             onClick={() => setShowUploadDialog(true)}
             variant="primary"
@@ -276,54 +261,54 @@ export default function KnowledgeBaseDetailPage() {
               </Button>
             </div>
           ) : (
-          <div className="space-y-2">
-            {documents.map((doc) => (
-              <div
-                key={doc.id}
-                className="flex items-center gap-4 p-4 bg-jarvis-panel/40 hover:bg-jarvis-panel/60 border border-white/5 rounded-lg transition-colors group"
-              >
-                {/* 文件图标 */}
-                <div className="flex-shrink-0">
-                  {getFileIcon(doc.type)}
-                </div>
-
-                {/* 文件信息 */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <h3 className="text-sm font-medium text-jarvis-text truncate">
-                      {doc.name}
-                    </h3>
-                    <span className={`px-2 py-0.5 text-xs rounded border ${getStatusColor(doc.status)}`}>
-                      {getStatusText(doc.status)}
-                    </span>
-                  </div>
-                  
-                  <div className="flex items-center gap-4 text-xs text-jarvis-text-secondary">
-                    <span>{formatSize(doc.size)}</span>
-                    {doc.status === 'completed' && (
-                      <span>{doc.chunk_count} 个片段</span>
-                    )}
-                    <span>{formatDate(doc.created_at)}</span>
-                  </div>
-
-                  {doc.status === 'failed' && doc.error_message && (
-                    <p className="text-xs text-jarvis-danger mt-1">{doc.error_message}</p>
-                  )}
-                </div>
-
-                {/* 操作按钮 */}
-                <button
-                  onClick={() => handleDeleteDocument(doc.id)}
-                  className="opacity-0 group-hover:opacity-100 p-2 hover:bg-red-500/20 rounded-lg transition-all"
-                  title="删除文档"
+            <div className="space-y-2">
+              {documents.map((doc) => (
+                <div
+                  key={doc.id}
+                  className="flex items-center gap-4 p-4 bg-jarvis-panel/40 hover:bg-jarvis-panel/60 border border-white/5 rounded-lg transition-colors group"
                 >
-                  <svg className="w-4 h-4 text-jarvis-danger" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                </button>
-              </div>
-            ))}
-          </div>
+                  {/* 文件图标 */}
+                  <div className="flex-shrink-0">
+                    {getFileIcon(doc.type)}
+                  </div>
+
+                  {/* 文件信息 */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <h3 className="text-sm font-medium text-jarvis-text truncate">
+                        {doc.name}
+                      </h3>
+                      <span className={`px-2 py-0.5 text-xs rounded border ${getStatusColor(doc.status)}`}>
+                        {getStatusText(doc.status)}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-4 text-xs text-jarvis-text-secondary">
+                      <span>{formatSize(doc.size)}</span>
+                      {doc.status === 'completed' && (
+                        <span>{doc.chunk_count} 个片段</span>
+                      )}
+                      <span>{formatDate(doc.created_at)}</span>
+                    </div>
+
+                    {doc.status === 'failed' && doc.error_message && (
+                      <p className="text-xs text-jarvis-danger mt-1">{doc.error_message}</p>
+                    )}
+                  </div>
+
+                  {/* 操作按钮 */}
+                  <button
+                    onClick={() => handleDeleteDocument(doc.id)}
+                    className="opacity-0 group-hover:opacity-100 p-2 hover:bg-red-500/20 rounded-lg transition-all"
+                    title="删除文档"
+                  >
+                    <svg className="w-4 h-4 text-jarvis-danger" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       </div>
@@ -372,26 +357,12 @@ function SearchTestDialog({
     const startTime = Date.now();
 
     try {
-      const response = await fetch(
-        `http://localhost:8000/api/v1/knowledge-bases/${knowledgeBaseId}/search`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            query: query.trim(),
-            top_k: 5
-          })
-        }
-      );
-
-      const data = await response.json();
+      // 使用Python引擎进行知识库检索
+      const response = await pythonEngine.kbSearch(knowledgeBaseId, query.trim(), 5);
       const endTime = Date.now();
-      
-      setSearchTime(endTime - startTime);
 
-      if (data.code === 0) {
-        setResults(data.data || []);
-      }
+      setSearchTime(endTime - startTime);
+      setResults(response.results || []);
     } catch (err) {
       console.error('Search failed:', err);
     } finally {
@@ -402,7 +373,7 @@ function SearchTestDialog({
   return (
     <>
       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40" onClick={onClose} />
-      
+
       <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
         <div className="bg-jarvis-panel border border-jarvis-gold/30 rounded-xl shadow-2xl w-full max-w-3xl max-h-[80vh] flex flex-col">
           {/* 头部 */}
@@ -435,7 +406,7 @@ function SearchTestDialog({
                 {loading ? '搜索中...' : '搜索'}
               </button>
             </div>
-            
+
             {searchTime > 0 && (
               <p className="text-xs text-jarvis-text-secondary mt-2">
                 搜索耗时: {searchTime}ms

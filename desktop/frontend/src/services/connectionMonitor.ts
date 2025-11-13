@@ -72,16 +72,20 @@ class ConnectionMonitor {
      */
     async checkConnection(service: ServiceType): Promise<boolean> {
         try {
-            const url = service === 'engine'
-                ? API_ENDPOINTS.engine.health
-                : `${API_ENDPOINTS.cloud.base}/health`;
-
-            const response = await fetch(url, {
-                method: 'GET',
-                signal: AbortSignal.timeout(3000),
-            });
-
-            return response.ok;
+            if (service === 'engine') {
+                // 使用 Tauri 命令检查引擎状态
+                const { invoke } = await import('@tauri-apps/api/core');
+                const isHealthy = await invoke<boolean>('check_engine_health');
+                return isHealthy;
+            } else {
+                // 云服务仍然使用 HTTP 检查
+                const url = API_ENDPOINTS.cloud.health;
+                const response = await fetch(url, {
+                    method: 'GET',
+                    signal: AbortSignal.timeout(3000),
+                });
+                return response.ok;
+            }
         } catch {
             return false;
         }

@@ -105,6 +105,7 @@ export interface ExecutionRecord {
 export interface SystemMetric {
   cpu: number;
   memory: number;
+  disk?: number;
   sidecarStatus: Status;
   alerts: Alert[];
 }
@@ -118,12 +119,14 @@ export interface Alert {
 
 // 软件扫描类型
 export interface SoftwareItem {
-  id: string;
+  id?: string;
   name: string;
   version?: string;
-  platform: 'macos' | 'windows';
-  compatibility: 'full' | 'partial' | 'unknown';
-  capabilities: string[];
+  publisher?: string;
+  install_date?: string;
+  platform?: 'macos' | 'windows';
+  compatibility?: 'full' | 'partial' | 'unknown';
+  capabilities?: string[];
 }
 
 // 录制器类型

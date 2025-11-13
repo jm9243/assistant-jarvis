@@ -1,21 +1,14 @@
 use tauri::Manager;
-use std::process::{Child, Command};
-use std::sync::Mutex;
+use std::path::PathBuf;
 
-// 引擎进程状态
-struct EngineState {
-    process: Option<Child>,
-}
+pub mod python_process;
+pub mod python_state;
+mod commands;
 
-// Tauri命令：启动Python引擎
-#[tauri::command]
-async fn start_engine(app_handle: tauri::AppHandle, state: tauri::State<'_, Mutex<EngineState>>) -> Result<(), String> {
-    let mut engine_state = state.lock().unwrap();
+use python_state::PythonState;
 
-    if engine_state.process.is_some() {
-        return Err("Engine is already running".to_string());
-    }
-
+// 辅助函数：查找Python引擎可执行文件路径
+fn find_engine_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
     // 获取资源目录路径
     let resource_path = app_handle
         .path()
@@ -23,101 +16,80 @@ async fn start_engine(app_handle: tauri::AppHandle, state: tauri::State<'_, Mute
         .map_err(|e| format!("Failed to get resource dir: {}", e))?;
     
     // 尝试多个可能的引擎路径
-    let possible_paths = vec![
-        // 打包后的路径
-        resource_path.join("engine").join("main.py"),
-        // 开发模式路径
-        std::env::current_exe()
-            .ok()
-            .and_then(|exe| exe.parent().map(|p| p.to_path_buf()))
-            .and_then(|p| p.parent().map(|p| p.to_path_buf()))
-            .and_then(|p| p.parent().map(|p| p.to_path_buf()))
-            .and_then(|p| p.parent().map(|p| p.to_path_buf()))
-            .and_then(|p| p.parent().map(|p| p.to_path_buf()))
-            .map(|p| p.join("engine").join("main.py"))
-            .unwrap_or_default(),
+    let mut possible_paths = vec![
+        // 打包后的路径 - daemon可执行文件
+        resource_path.join("engine").join("jarvis-engine"),
+        // 打包后的路径 - Windows
+        resource_path.join("engine").join("jarvis-engine.exe"),
     ];
-
-    let mut engine_path = None;
-    for path in possible_paths {
-        if path.exists() {
-            engine_path = Some(path);
-            break;
-        }
-    }
-
-    let engine_path = engine_path.ok_or("Engine not found. Please make sure the engine directory exists.")?;
     
-    println!("Engine path: {:?}", engine_path);
-
-    // 获取引擎目录
-    let engine_dir = engine_path.parent()
-        .ok_or("Failed to get engine directory")?;
-
-    // 尝试使用启动脚本（打包后）或直接运行Python（开发模式）
-    let start_script = if cfg!(target_os = "windows") {
-        engine_dir.join("start.bat")
-    } else {
-        engine_dir.join("start.sh")
-    };
-
-    let child = if start_script.exists() {
-        // 使用启动脚本
-        println!("Using start script: {:?}", start_script);
-        if cfg!(target_os = "windows") {
-            Command::new("cmd")
-                .args(&["/C", start_script.to_str().unwrap()])
-                .current_dir(engine_dir)
-                .spawn()
-        } else {
-            Command::new("sh")
-                .arg(&start_script)
-                .current_dir(engine_dir)
-                .spawn()
+    // 开发模式：尝试查找daemon.py
+    #[cfg(debug_assertions)]
+    {
+        // 方法1: 从当前工作目录查找
+        if let Ok(cwd) = std::env::current_dir() {
+            // 尝试 ../engine/daemon.py (从frontend目录)
+            possible_paths.push(cwd.join("..").join("engine").join("daemon.py"));
+            // 尝试 ../../engine/daemon.py (从frontend/src-tauri目录)
+            possible_paths.push(cwd.join("..").join("..").join("engine").join("daemon.py"));
+            // 尝试 engine/daemon.py (从desktop目录)
+            possible_paths.push(cwd.join("engine").join("daemon.py"));
         }
-    } else {
-        // 直接运行Python
-        println!("Running Python directly");
-        let python_cmd = if cfg!(target_os = "windows") { "python" } else { "python3" };
-        Command::new(python_cmd)
-            .arg(&engine_path)
-            .current_dir(engine_dir)
-            .spawn()
-    };
-
-    match child {
-        Ok(process) => {
-            engine_state.process = Some(process);
-            println!("Python engine started successfully");
-            Ok(())
+        
+        // 方法2: 从可执行文件路径查找
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(exe_dir) = exe.parent() {
+                // 从target/debug向上查找
+                if let Some(target_dir) = exe_dir.parent() {
+                    if let Some(src_tauri_dir) = target_dir.parent() {
+                        if let Some(frontend_dir) = src_tauri_dir.parent() {
+                            if let Some(desktop_dir) = frontend_dir.parent() {
+                                possible_paths.push(desktop_dir.join("engine").join("daemon.py"));
+                            }
+                        }
+                    }
+                }
+            }
         }
-        Err(e) => {
-            eprintln!("Failed to start engine: {}", e);
-            Err(format!("Failed to start engine: {}. Make sure Python 3 is installed.", e))
+        
+        // 方法3: 使用环境变量
+        if let Ok(engine_path) = std::env::var("JARVIS_ENGINE_PATH") {
+            possible_paths.push(PathBuf::from(engine_path));
         }
     }
-}
 
-// Tauri命令：停止Python引擎
-#[tauri::command]
-async fn stop_engine(state: tauri::State<'_, Mutex<EngineState>>) -> Result<(), String> {
-    let mut engine_state = state.lock().unwrap();
-
-    if let Some(mut process) = engine_state.process.take() {
-        match process.kill() {
-            Ok(_) => Ok(()),
-            Err(e) => Err(format!("Failed to stop engine: {}", e)),
+    // 尝试所有可能的路径
+    for path in &possible_paths {
+        log::debug!("Checking engine path: {:?}", path);
+        if path.exists() {
+            log::info!("Found engine at: {:?}", path);
+            return Ok(path.clone());
         }
-    } else {
-        Err("Engine is not running".to_string())
     }
+
+    // 如果都找不到，返回详细的错误信息
+    let paths_str = possible_paths
+        .iter()
+        .map(|p| format!("  - {:?}", p))
+        .collect::<Vec<_>>()
+        .join("\n");
+    
+    Err(format!(
+        "Engine not found. Tried the following paths:\n{}\n\nPlease ensure:\n1. In development: Run from desktop/ directory\n2. In production: Engine is bundled in resources/engine/",
+        paths_str
+    ))
 }
 
-// Tauri命令：检查引擎状态
+// Tauri命令：检查引擎健康状态
 #[tauri::command]
-async fn check_engine_status(state: tauri::State<'_, Mutex<EngineState>>) -> Result<bool, String> {
-    let engine_state = state.lock().unwrap();
-    Ok(engine_state.process.is_some())
+async fn check_engine_health(state: tauri::State<'_, PythonState>) -> Result<bool, String> {
+    Ok(state.check_health().await)
+}
+
+// Tauri命令：重启Python引擎
+#[tauri::command]
+async fn restart_engine(state: tauri::State<'_, PythonState>) -> Result<(), String> {
+    state.restart().await
 }
 
 // Tauri命令：保存到系统密钥库
@@ -159,56 +131,162 @@ async fn request_permission(_permission: String) -> Result<bool, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // 初始化日志
+    env_logger::init();
+    
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
-        .manage(Mutex::new(EngineState { process: None }))
         .invoke_handler(tauri::generate_handler![
-            start_engine,
-            stop_engine,
-            check_engine_status,
+            // 引擎管理命令
+            check_engine_health,
+            restart_engine,
+            // 密钥库命令
             save_to_keychain,
             get_from_keychain,
+            // 权限命令
             request_permission,
+            // Agent对话命令
+            commands::agent_chat,
+            commands::create_conversation,
+            commands::get_conversation_history,
+            // Agent管理命令
+            commands::list_agents,
+            commands::get_agent,
+            commands::create_agent,
+            commands::update_agent,
+            commands::delete_agent,
+            // 知识库检索命令
+            commands::kb_search,
+            commands::kb_add_document,
+            commands::kb_delete_document,
+            commands::kb_get_stats,
+            // 知识库管理命令
+            commands::list_knowledge_bases,
+            commands::get_knowledge_base,
+            commands::create_knowledge_base,
+            commands::update_knowledge_base,
+            commands::delete_knowledge_base,
+            commands::list_documents,
+            // 工具管理命令
+            commands::list_tools,
+            commands::get_tool,
+            commands::update_tool,
+            commands::call_tool,
+            // GUI自动化命令
+            commands::locate_element,
+            commands::click_element,
+            commands::input_text,
+            // 工作流命令
+            commands::execute_workflow,
+            commands::pause_workflow,
+            commands::resume_workflow,
+            commands::cancel_workflow,
+            // 录制器命令
+            commands::start_recording,
+            commands::stop_recording,
+            commands::pause_recording,
+            commands::resume_recording,
+            commands::get_recording_status,
+            // 系统监控命令
+            commands::get_system_metrics,
+            commands::get_system_info,
+            commands::scan_installed_software,
         ])
-        .setup(|_app| {
-            // 应用启动时的初始化逻辑
-            println!("Jarvis Desktop is starting...");
+        .setup(|app| {
+            log::info!("Jarvis Desktop is starting...");
             
-            #[cfg(not(debug_assertions))]
-            {
-                // 生产模式：自动启动 engine
-                println!("Production mode: Auto-starting engine...");
-                let app_handle = _app.handle().clone();
-                tauri::async_runtime::spawn(async move {
-                    // 获取 state 需要在 async 块内部
-                    let state = app_handle.state::<Mutex<EngineState>>();
-                    if let Err(e) = start_engine(app_handle.clone(), state).await {
-                        eprintln!("Failed to auto-start engine: {}", e);
+            // 查找Python引擎路径
+            let engine_path = find_engine_path(&app.handle())?;
+            log::info!("Engine path: {:?}", engine_path);
+            
+            // 初始化PythonState
+            let python_state = PythonState::new(
+                engine_path.to_str()
+                    .ok_or("Invalid engine path")?
+                    .to_string()
+            );
+            
+            // 注册PythonState到Tauri状态管理
+            app.manage(python_state);
+            
+            // 自动启动Python引擎
+            let app_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let state = app_handle.state::<PythonState>();
+                
+                log::info!("Starting Python engine...");
+                
+                // 给Tauri一点时间完成初始化
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                
+                match state.ensure_started().await {
+                    Ok(_) => {
+                        log::info!("Python engine started successfully");
                     }
-                });
-            }
+                    Err(e) => {
+                        log::error!("Failed to start Python engine: {}", e);
+                        // 在生产模式下，启动失败是严重错误
+                        #[cfg(not(debug_assertions))]
+                        {
+                            eprintln!("FATAL: Failed to start Python engine: {}", e);
+                        }
+                        // 在开发模式下，也打印错误但不退出
+                        #[cfg(debug_assertions)]
+                        {
+                            eprintln!("ERROR: Failed to start Python engine: {}", e);
+                            eprintln!("Please ensure:");
+                            eprintln!("1. Python 3.10+ is installed");
+                            eprintln!("2. Run 'cd engine && pip install -r requirements.txt'");
+                            eprintln!("3. Run from desktop/ directory");
+                        }
+                    }
+                }
+            });
             
-            #[cfg(debug_assertions)]
-            {
-                // 开发模式：不自动启动，由 npm start 管理
-                println!("Development mode: Engine should be started via npm start");
-            }
+            // 启动健康检查任务（每30秒检查一次）
+            let app_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
+                
+                loop {
+                    interval.tick().await;
+                    
+                    let state = app_handle.state::<PythonState>();
+                    
+                    match state.ensure_alive().await {
+                        Ok(was_alive) => {
+                            if !was_alive {
+                                log::warn!("Python engine was restarted by health check");
+                            }
+                        }
+                        Err(e) => {
+                            log::error!("Health check failed: {}", e);
+                        }
+                    }
+                }
+            });
             
             Ok(())
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
-                // 窗口关闭时清理资源
-                println!("Window is closing, cleaning up...");
+                log::info!("Window is closing, cleaning up...");
                 
-                // 停止 Python 引擎
-                let state = window.state::<Mutex<EngineState>>();
-                let mut engine_state = state.lock().unwrap();
+                // 停止Python引擎
+                let state = window.state::<PythonState>();
+                let state_clone = state.inner().clone();
                 
-                if let Some(mut process) = engine_state.process.take() {
-                    println!("Stopping Python engine...");
-                    let _ = process.kill();
-                }
+                // 在新的异步任务中停止引擎
+                tauri::async_runtime::block_on(async move {
+                    match state_clone.stop().await {
+                        Ok(_) => {
+                            log::info!("Python engine stopped successfully");
+                        }
+                        Err(e) => {
+                            log::error!("Failed to stop Python engine: {}", e);
+                        }
+                    }
+                });
             }
         })
         .run(tauri::generate_context!())

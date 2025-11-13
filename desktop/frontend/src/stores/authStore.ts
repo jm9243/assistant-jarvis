@@ -1,6 +1,9 @@
 import { create } from 'zustand';
 import { AuthState, User } from '@/types';
 import { tauriService } from '@/services/tauri';
+import axios from 'axios';
+
+const API_BASE_URL = 'http://localhost:8080/api/v1';
 
 interface AuthStore extends AuthState {
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
@@ -15,37 +18,58 @@ export const useAuthStore = create<AuthStore>((set) => ({
   token: null,
   isAuthenticated: false,
 
-  login: async (email: string, _password: string) => {
+  login: async (emailOrUsername: string, password: string) => {
     try {
-      // TODO: 调用Supabase Auth API
-      // 这里先模拟登录
-      const mockUser: User = {
-        id: '1',
-        email,
-        username: email.split('@')[0],
-        membership: 'free',
-      };
-
-      const mockToken = 'mock_jwt_token_' + Date.now();
-
-      // 保存到系统密钥库
-      await tauriService.saveToKeychain('jarvis', 'auth_token', mockToken);
-
-      // 保存到localStorage作为备份
-      localStorage.setItem('auth_token', mockToken);
-      localStorage.setItem('user', JSON.stringify(mockUser));
-
-      set({
-        user: mockUser,
-        token: mockToken,
-        isAuthenticated: true,
+      // 调用真实的云服务 API
+      const response = await axios.post(`${API_BASE_URL}/auth/login`, {
+        email: emailOrUsername,
+        password: password,
       });
 
-      return { success: true };
+      if (response.data.code === 0 && response.data.data) {
+        const { token, user } = response.data.data;
+
+        const userObj: User = {
+          id: user.id || user.user_id,
+          email: user.email,
+          username: user.username || user.name,
+          membership: user.membership || 'free',
+        };
+
+        // 保存到系统密钥库
+        try {
+          await tauriService.saveToKeychain('jarvis', 'auth_token', token);
+        } catch (e) {
+          console.warn('Failed to save to keychain:', e);
+        }
+
+        // 保存到localStorage作为备份
+        localStorage.setItem('auth_token', token);
+        localStorage.setItem('user', JSON.stringify(userObj));
+
+        set({
+          user: userObj,
+          token: token,
+          isAuthenticated: true,
+        });
+
+        return { success: true };
+      } else {
+        return {
+          success: false,
+          error: response.data.message || '登录失败',
+        };
+      }
     } catch (error) {
+      if (axios.isAxiosError(error) && error.response) {
+        return {
+          success: false,
+          error: error.response.data?.message || '登录失败，请检查用户名和密码',
+        };
+      }
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Login failed',
+        error: error instanceof Error ? error.message : '登录失败，请稍后重试',
       };
     }
   },
@@ -62,7 +86,7 @@ export const useAuthStore = create<AuthStore>((set) => ({
 
   refreshToken: async () => {
     try {
-      // TODO: 实现Token刷新逻辑
+      // 尝试从密钥库获取token
       const result = await tauriService.getFromKeychain('jarvis', 'auth_token');
       if (result.success && result.data) {
         set({ token: result.data });

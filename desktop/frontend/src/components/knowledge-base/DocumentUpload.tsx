@@ -23,10 +23,10 @@ export function DocumentUpload({ knowledgeBaseId, onClose, onSuccess }: Document
     if (!selectedFiles || selectedFiles.length === 0) return;
 
     const newFiles: UploadFile[] = [];
-    
+
     for (let i = 0; i < selectedFiles.length; i++) {
       const file = selectedFiles[i];
-      
+
       // 检查文件类型
       const validTypes = [
         'application/pdf',
@@ -35,7 +35,7 @@ export function DocumentUpload({ knowledgeBaseId, onClose, onSuccess }: Document
         'text/plain',
         'text/markdown'
       ];
-      
+
       if (!validTypes.includes(file.type) && !file.name.endsWith('.md')) {
         alert(`不支持的文件类型: ${file.name}`);
         continue;
@@ -80,7 +80,7 @@ export function DocumentUpload({ knowledgeBaseId, onClose, onSuccess }: Document
 
   const handleUpload = async () => {
     const pendingFiles = files.filter(f => f.status === 'pending');
-    
+
     if (pendingFiles.length === 0) {
       onSuccess();
       return;
@@ -128,7 +128,7 @@ export function DocumentUpload({ knowledgeBaseId, onClose, onSuccess }: Document
       xhr.addEventListener('load', () => {
         if (xhr.status === 200) {
           const data = JSON.parse(xhr.responseText);
-          
+
           if (data.code === 0) {
             setFiles(prev => prev.map(f =>
               f.id === uploadFile.id
@@ -238,11 +238,10 @@ export function DocumentUpload({ knowledgeBaseId, onClose, onSuccess }: Document
           <div className="flex-1 overflow-y-auto p-6 scrollbar-thin">
             {/* 拖拽上传区域 */}
             <div
-              className={`border-2 border-dashed rounded-xl p-8 text-center transition-all ${
-                isDragging
-                  ? 'border-jarvis-gold bg-jarvis-gold/10'
-                  : 'border-jarvis-gold/30 hover:border-jarvis-gold/50'
-              }`}
+              className={`border-2 border-dashed rounded-xl p-8 text-center transition-all ${isDragging
+                ? 'border-jarvis-gold bg-jarvis-gold/10'
+                : 'border-jarvis-gold/30 hover:border-jarvis-gold/50'
+                }`}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
@@ -250,11 +249,11 @@ export function DocumentUpload({ knowledgeBaseId, onClose, onSuccess }: Document
               <svg className="w-12 h-12 mx-auto mb-4 text-jarvis-gold" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
               </svg>
-              
+
               <p className="text-jarvis-text mb-2">
                 拖拽文件到这里，或
               </p>
-              
+
               <button
                 onClick={() => fileInputRef.current?.click()}
                 className="btn-secondary"
@@ -282,7 +281,7 @@ export function DocumentUpload({ knowledgeBaseId, onClose, onSuccess }: Document
                 <h3 className="text-sm font-medium text-jarvis-text mb-3">
                   待上传文件 ({files.length})
                 </h3>
-                
+
                 {files.map((file) => (
                   <div
                     key={file.id}

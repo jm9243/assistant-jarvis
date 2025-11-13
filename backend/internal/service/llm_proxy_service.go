@@ -202,7 +202,7 @@ func (s *LLMProxyService) recordUsage(ctx context.Context, userID string, llmMod
 	}
 
 	// 创建用量记录
-	record := &UsageRecord{
+	record := &model.UsageRecord{
 		UserID:            userID,
 		ModelID:           llmModel.ID,
 		Provider:          llmModel.Provider,

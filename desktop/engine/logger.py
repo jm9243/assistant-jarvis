@@ -60,8 +60,8 @@ def setup_logger(name: str = "jarvis") -> logging.Logger:
     error_handler.setLevel(logging.ERROR)
     error_handler.setFormatter(formatter)
     
-    # 控制台处理器
-    console_handler = logging.StreamHandler(sys.stdout)
+    # 控制台处理器 - 使用stderr避免干扰stdout的IPC通信
+    console_handler = logging.StreamHandler(sys.stderr)
     console_handler.setLevel(logging.INFO)
     console_formatter = logging.Formatter(
         '%(levelname)s - %(message)s'

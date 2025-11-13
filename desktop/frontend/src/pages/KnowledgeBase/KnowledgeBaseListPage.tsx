@@ -1,16 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui';
-
-interface KnowledgeBase {
-  id: string;
-  name: string;
-  description: string;
-  document_count: number;
-  total_size: number;
-  created_at: string;
-  updated_at: string;
-}
+import { knowledgeBaseApi, type KnowledgeBase } from '@/services/knowledgeBaseApi';
 
 export default function KnowledgeBaseListPage() {
   const navigate = useNavigate();
@@ -27,18 +18,14 @@ export default function KnowledgeBaseListPage() {
   const loadKnowledgeBases = async () => {
     setLoading(true);
     setError(null);
-    
+
     try {
-      const response = await fetch('http://localhost:8000/api/v1/knowledge-bases');
-      const data = await response.json();
-      
-      if (data.code === 0) {
-        setKnowledgeBases(data.data || []);
-      } else {
-        setError(data.message || '加载失败');
-      }
+      // TODO: 使用 Tauri IPC 调用
+      // const kbs = await invoke('list_knowledge_bases');
+      const kbs = await knowledgeBaseApi.listKnowledgeBases();
+      setKnowledgeBases(kbs);
     } catch (err) {
-      setError('网络错误，请稍后重试');
+      setError('加载失败，请稍后重试');
       console.error('Failed to load knowledge bases:', err);
     } finally {
       setLoading(false);
@@ -49,17 +36,8 @@ export default function KnowledgeBaseListPage() {
     if (!confirm('确定要删除这个知识库吗？这将删除所有相关文档。')) return;
 
     try {
-      const response = await fetch(`http://localhost:8000/api/v1/knowledge-bases/${id}`, {
-        method: 'DELETE'
-      });
-      
-      const data = await response.json();
-      
-      if (data.code === 0) {
-        await loadKnowledgeBases();
-      } else {
-        alert(data.message || '删除失败');
-      }
+      await knowledgeBaseApi.deleteKnowledgeBase(id);
+      await loadKnowledgeBases();
     } catch (err) {
       alert('删除失败，请稍后重试');
       console.error('Failed to delete knowledge base:', err);
@@ -100,7 +78,7 @@ export default function KnowledgeBaseListPage() {
             管理文档和向量数据库
           </p>
         </div>
-        
+
         <Button
           onClick={() => setShowCreateDialog(true)}
           variant="primary"
@@ -157,62 +135,62 @@ export default function KnowledgeBaseListPage() {
             )}
           </div>
         ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredKnowledgeBases.map((kb) => (
-            <div
-              key={kb.id}
-              className="card group cursor-pointer"
-              onClick={() => navigate(`/dashboard/knowledge-bases/${kb.id}`)}
-            >
-              {/* 图标 */}
-              <div className="flex items-start justify-between mb-4">
-                <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-jarvis-gold/20 to-jarvis-gold-dark/20 border border-jarvis-gold/30 flex items-center justify-center">
-                  <svg className="w-6 h-6 text-jarvis-gold" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                  </svg>
-                </div>
-                
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDelete(kb.id);
-                  }}
-                  className="opacity-0 group-hover:opacity-100 p-2 hover:bg-red-500/20 rounded-lg transition-all"
-                  title="删除知识库"
-                >
-                  <svg className="w-4 h-4 text-jarvis-danger" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                </button>
-              </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredKnowledgeBases.map((kb) => (
+              <div
+                key={kb.id}
+                className="card group cursor-pointer"
+                onClick={() => navigate(`/dashboard/knowledge-bases/${kb.id}`)}
+              >
+                {/* 图标 */}
+                <div className="flex items-start justify-between mb-4">
+                  <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-jarvis-gold/20 to-jarvis-gold-dark/20 border border-jarvis-gold/30 flex items-center justify-center">
+                    <svg className="w-6 h-6 text-jarvis-gold" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                    </svg>
+                  </div>
 
-              {/* 名称和描述 */}
-              <h3 className="text-lg font-semibold text-jarvis-text mb-2 truncate">
-                {kb.name}
-              </h3>
-              <p className="text-sm text-jarvis-text-secondary mb-4 line-clamp-2 min-h-[40px]">
-                {kb.description || '暂无描述'}
-              </p>
-
-              {/* 统计信息 */}
-              <div className="space-y-2 mb-4">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-jarvis-text-secondary">文档数量</span>
-                  <span className="text-jarvis-gold font-medium">{kb.document_count || 0}</span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDelete(kb.id);
+                    }}
+                    className="opacity-0 group-hover:opacity-100 p-2 hover:bg-red-500/20 rounded-lg transition-all"
+                    title="删除知识库"
+                  >
+                    <svg className="w-4 h-4 text-jarvis-danger" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
                 </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-jarvis-text-secondary">总大小</span>
-                  <span className="text-jarvis-text">{formatSize(kb.total_size || 0)}</span>
+
+                {/* 名称和描述 */}
+                <h3 className="text-lg font-semibold text-jarvis-text mb-2 truncate">
+                  {kb.name}
+                </h3>
+                <p className="text-sm text-jarvis-text-secondary mb-4 line-clamp-2 min-h-[40px]">
+                  {kb.description || '暂无描述'}
+                </p>
+
+                {/* 统计信息 */}
+                <div className="space-y-2 mb-4">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-jarvis-text-secondary">文档数量</span>
+                    <span className="text-jarvis-gold font-medium">{kb.document_count || 0}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-jarvis-text-secondary">总大小</span>
+                    <span className="text-jarvis-text">{formatSize(kb.total_size || 0)}</span>
+                  </div>
+                </div>
+
+                {/* 时间 */}
+                <div className="pt-4 border-t border-white/5 text-xs text-jarvis-text-secondary">
+                  更新于 {formatDate(kb.updated_at)}
                 </div>
               </div>
-
-              {/* 时间 */}
-              <div className="pt-4 border-t border-white/5 text-xs text-jarvis-text-secondary">
-                更新于 {formatDate(kb.updated_at)}
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
         )}
       </div>
 
@@ -245,7 +223,7 @@ function CreateKnowledgeBaseDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!name.trim()) {
       setError('请输入知识库名称');
       return;
@@ -255,24 +233,13 @@ function CreateKnowledgeBaseDialog({
     setError(null);
 
     try {
-      const response = await fetch('http://localhost:8000/api/v1/knowledge-bases', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: name.trim(),
-          description: description.trim()
-        })
+      await knowledgeBaseApi.createKnowledgeBase({
+        name: name.trim(),
+        description: description.trim()
       });
-
-      const data = await response.json();
-
-      if (data.code === 0) {
-        onSuccess();
-      } else {
-        setError(data.message || '创建失败');
-      }
+      onSuccess();
     } catch (err) {
-      setError('网络错误，请稍后重试');
+      setError('创建失败，请稍后重试');
       console.error('Failed to create knowledge base:', err);
     } finally {
       setLoading(false);

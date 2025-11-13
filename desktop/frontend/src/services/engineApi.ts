@@ -1,10 +1,10 @@
 /**
  * Python Engine API 服务
  * 处理本地自动化引擎的 API 调用（录制、执行等）
+ * 使用 Tauri IPC 与 Python 引擎通信
  */
-import axios, { AxiosInstance } from 'axios';
+import { invoke } from '@tauri-apps/api/core';
 import { Result } from '@/types';
-import { API_ENDPOINTS, API_TIMEOUT } from '@/config/api';
 
 interface RecordedStep {
     id: string;
@@ -29,42 +29,19 @@ interface SystemMetric {
 }
 
 class EngineApiService {
-    private client: AxiosInstance;
-    private baseURL: string;
-
     constructor() {
-        // Python Engine API
-        this.baseURL = API_ENDPOINTS.engine.base.replace('/v1', '');
-        this.client = axios.create({
-            baseURL: this.baseURL,
-            timeout: API_TIMEOUT,
-            headers: {
-                'Content-Type': 'application/json',
-            },
-        });
-
-        // 请求拦截器
-        this.client.interceptors.request.use(
-            (config) => {
-                const token = localStorage.getItem('auth_token');
-                if (token) {
-                    config.headers.Authorization = `Bearer ${token}`;
-                }
-                return config;
-            },
-            (error) => Promise.reject(error)
-        );
+        // 使用 Tauri IPC，不需要 HTTP 客户端
     }
 
     // ==================== 录制相关 API ====================
 
     /**
      * 开始录制
-     * @param mode 录制模式：auto（自动）或 manual（手动）
+     * @param _mode 录制模式：auto（自动）或 manual（手动）
      */
-    async startRecording(mode: 'auto' | 'manual' = 'auto'): Promise<Result<void>> {
+    async startRecording(_mode: 'auto' | 'manual' = 'auto'): Promise<Result<void>> {
         try {
-            await this.client.post('/recorder/start', { mode });
+            await invoke('start_recording');
             return { success: true };
         } catch (error) {
             return this.handleError(error);
@@ -76,8 +53,8 @@ class EngineApiService {
      */
     async stopRecording(): Promise<Result<{ nodes: any[] }>> {
         try {
-            const response = await this.client.post('/recorder/stop');
-            return { success: true, data: response.data };
+            const result = await invoke<any>('stop_recording');
+            return { success: true, data: result };
         } catch (error) {
             return this.handleError(error);
         }
@@ -88,7 +65,7 @@ class EngineApiService {
      */
     async pauseRecording(): Promise<Result<void>> {
         try {
-            await this.client.post('/recorder/pause');
+            await invoke('pause_recording');
             return { success: true };
         } catch (error) {
             return this.handleError(error);
@@ -100,7 +77,7 @@ class EngineApiService {
      */
     async resumeRecording(): Promise<Result<void>> {
         try {
-            await this.client.post('/recorder/resume');
+            await invoke('resume_recording');
             return { success: true };
         } catch (error) {
             return this.handleError(error);
@@ -116,8 +93,12 @@ class EngineApiService {
         steps: RecordedStep[];
     }>> {
         try {
-            const response = await this.client.get('/recorder/status');
-            return { success: true, data: response.data };
+            const result = await invoke<{
+                isRecording: boolean;
+                isPaused: boolean;
+                steps: RecordedStep[];
+            }>('get_recording_status');
+            return { success: true, data: result };
         } catch (error) {
             return this.handleError(error);
         }
@@ -127,16 +108,16 @@ class EngineApiService {
 
     /**
      * 执行工作流
-     * @param workflow 工作流定义
-     * @param params 执行参数
+     * @param workflowId 工作流ID
+     * @param inputs 执行参数
      */
-    async executeWorkflow(workflow: any, params?: Record<string, any>): Promise<Result<{ runId: string }>> {
+    async executeWorkflow(workflowId: string, inputs?: Record<string, any>): Promise<Result<{ runId: string }>> {
         try {
-            const response = await this.client.post('/workflow/execute', {
-                workflow,
-                params,
+            const result = await invoke<any>('execute_workflow', {
+                workflowId,
+                inputs: inputs || {},
             });
-            return { success: true, data: response.data };
+            return { success: true, data: result };
         } catch (error) {
             return this.handleError(error);
         }
@@ -144,12 +125,12 @@ class EngineApiService {
 
     /**
      * 获取执行状态
-     * @param runId 执行ID
+     * @param _runId 执行ID
      */
-    async getExecutionStatus(runId: string): Promise<Result<ExecutionStatus>> {
+    async getExecutionStatus(_runId: string): Promise<Result<ExecutionStatus>> {
         try {
-            const response = await this.client.get(`/workflow/execution/${runId}`);
-            return { success: true, data: response.data };
+            // TODO: 需要在 Rust 中添加对应的命令
+            throw new Error('Not implemented yet');
         } catch (error) {
             return this.handleError(error);
         }
@@ -157,11 +138,11 @@ class EngineApiService {
 
     /**
      * 暂停执行
-     * @param runId 执行ID
+     * @param workflowId 工作流ID
      */
-    async pauseExecution(runId: string): Promise<Result<void>> {
+    async pauseExecution(workflowId: string): Promise<Result<void>> {
         try {
-            await this.client.post(`/workflow/execution/${runId}/pause`);
+            await invoke('pause_workflow', { workflowId });
             return { success: true };
         } catch (error) {
             return this.handleError(error);
@@ -170,11 +151,11 @@ class EngineApiService {
 
     /**
      * 恢复执行
-     * @param runId 执行ID
+     * @param workflowId 工作流ID
      */
-    async resumeExecution(runId: string): Promise<Result<void>> {
+    async resumeExecution(workflowId: string): Promise<Result<void>> {
         try {
-            await this.client.post(`/workflow/execution/${runId}/resume`);
+            await invoke('resume_workflow', { workflowId });
             return { success: true };
         } catch (error) {
             return this.handleError(error);
@@ -183,11 +164,11 @@ class EngineApiService {
 
     /**
      * 取消执行
-     * @param runId 执行ID
+     * @param workflowId 工作流ID
      */
-    async cancelExecution(runId: string): Promise<Result<void>> {
+    async cancelExecution(workflowId: string): Promise<Result<void>> {
         try {
-            await this.client.post(`/workflow/execution/${runId}/cancel`);
+            await invoke('cancel_workflow', { workflowId });
             return { success: true };
         } catch (error) {
             return this.handleError(error);
@@ -201,8 +182,8 @@ class EngineApiService {
      */
     async getSystemInfo(): Promise<Result<SystemMetric>> {
         try {
-            const response = await this.client.get('/system/info');
-            return { success: true, data: response.data };
+            // TODO: 需要在 Rust 中添加对应的命令
+            throw new Error('Not implemented yet');
         } catch (error) {
             return this.handleError(error);
         }
@@ -213,8 +194,8 @@ class EngineApiService {
      */
     async getSystemStatus(): Promise<Result<{ status: string; uptime: number }>> {
         try {
-            const response = await this.client.get('/system/status');
-            return { success: true, data: response.data };
+            // TODO: 需要在 Rust 中添加对应的命令
+            throw new Error('Not implemented yet');
         } catch (error) {
             return this.handleError(error);
         }
@@ -225,8 +206,8 @@ class EngineApiService {
      */
     async scanSoftware(): Promise<Result<any[]>> {
         try {
-            const response = await this.client.get('/system/scan');
-            return { success: true, data: response.data };
+            // TODO: 需要在 Rust 中添加对应的命令
+            throw new Error('Not implemented yet');
         } catch (error) {
             return this.handleError(error);
         }
@@ -234,12 +215,12 @@ class EngineApiService {
 
     /**
      * 获取日志
-     * @param filter 过滤条件
+     * @param _filter 过滤条件
      */
-    async getLogs(filter?: { level?: string; limit?: number }): Promise<Result<any[]>> {
+    async getLogs(_filter?: { level?: string; limit?: number }): Promise<Result<any[]>> {
         try {
-            const response = await this.client.get('/system/logs', { params: filter });
-            return { success: true, data: response.data };
+            // TODO: 需要在 Rust 中添加对应的命令
+            throw new Error('Not implemented yet');
         } catch (error) {
             return this.handleError(error);
         }
@@ -248,13 +229,6 @@ class EngineApiService {
     // ==================== 错误处理 ====================
 
     private handleError<T = unknown>(error: any): Result<T> {
-        if (axios.isAxiosError(error)) {
-            return {
-                success: false,
-                error: error.response?.data?.message || error.message,
-                error_code: error.response?.data?.error_code,
-            };
-        }
         return {
             success: false,
             error: error instanceof Error ? error.message : 'Unknown error',

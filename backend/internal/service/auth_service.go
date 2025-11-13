@@ -31,17 +31,41 @@ func (s *AuthService) Register(ctx context.Context, req *model.RegisterRequest) 
 		return nil, fmt.Errorf("failed to register: %w", err)
 	}
 
-	// 创建用户 Profile
+	// 创建用户 Profile（使用用户的 access_token）
+	username := req.Username
+	if username == "" {
+		// 如果没有提供 username，使用邮箱前缀
+		for i := 0; i < len(resp.User.Email); i++ {
+			if resp.User.Email[i] == '@' {
+				username = resp.User.Email[:i]
+				break
+			}
+		}
+	}
+
 	user := &model.User{
 		ID:              resp.User.ID,
-		Username:        req.Username,
+		Username:        username,
 		MembershipLevel: "free",
 		StorageQuotaMB:  1000,
 		TokenQuota:      100000,
 	}
 
-	if err := s.userRepo.CreateProfile(ctx, user); err != nil {
-		return nil, fmt.Errorf("failed to create user profile: %w", err)
+	// 使用用户的 access_token 创建 profile（绕过 RLS）
+	if err := s.userRepo.CreateProfileWithToken(ctx, user, resp.AccessToken); err != nil {
+		// 如果创建失败，可能是触发器已经创建了，尝试更新
+		updateReq := &model.UpdateUserRequest{
+			Username: username,
+		}
+		if updateErr := s.userRepo.UpdateWithToken(ctx, resp.User.ID, updateReq, resp.AccessToken); updateErr != nil {
+			return nil, fmt.Errorf("failed to create or update profile: create error: %w, update error: %v", err, updateErr)
+		}
+	}
+
+	// 获取完整的用户信息（使用 access_token）
+	user, err = s.userRepo.FindByIDWithToken(ctx, resp.User.ID, resp.AccessToken)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user profile: %w", err)
 	}
 
 	return user, nil
@@ -55,8 +79,8 @@ func (s *AuthService) Login(ctx context.Context, req *model.LoginRequest) (*mode
 		return nil, fmt.Errorf("failed to login: %w", err)
 	}
 
-	// 获取用户 Profile
-	user, err := s.userRepo.FindByID(ctx, resp.User.ID)
+	// 获取用户 Profile（使用 access_token）
+	user, err := s.userRepo.FindByIDWithToken(ctx, resp.User.ID, resp.AccessToken)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user profile: %w", err)
 	}

@@ -1,13 +1,12 @@
 import { useState, useEffect } from 'react';
-import { apiService } from '@/services/api';
-import { SoftwareItem } from '@/types';
+import { systemApi, InstalledSoftware } from '@/services/systemApi';
 import { Button } from '@/components/ui';
 
 export function SoftwareScannerPage() {
-  const [software, setSoftware] = useState<SoftwareItem[]>([]);
+  const [software, setSoftware] = useState<InstalledSoftware[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<'all' | 'full' | 'partial' | 'unknown'>('all');
+  const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
     scanSoftware();
@@ -18,16 +17,9 @@ export function SoftwareScannerPage() {
       setLoading(true);
       setError(null);
       console.log('Starting software scan...');
-      const result = await apiService.scanSoftware();
+      const result = await systemApi.scanSoftware();
       console.log('Scan result:', result);
-
-      if (result.success && result.data) {
-        console.log('Software found:', result.data.length);
-        setSoftware(result.data);
-      } else {
-        console.error('Scan failed:', result.error);
-        setError(result.error || '扫描失败');
-      }
+      setSoftware(result);
     } catch (err) {
       console.error('Scan error:', err);
       setError(err instanceof Error ? err.message : '扫描失败');
@@ -36,34 +28,12 @@ export function SoftwareScannerPage() {
     }
   };
 
-  const filteredSoftware = Array.isArray(software) 
+  const filteredSoftware = Array.isArray(software)
     ? software.filter((item) => {
-        if (filter === 'all') return true;
-        return item.compatibility === filter;
-      })
+      if (!searchTerm) return true;
+      return item.name.toLowerCase().includes(searchTerm.toLowerCase());
+    })
     : [];
-
-  const getCompatibilityColor = (compatibility: string) => {
-    switch (compatibility) {
-      case 'full':
-        return 'text-jarvis-success bg-jarvis-success/10 border-jarvis-success/30';
-      case 'partial':
-        return 'text-jarvis-warning bg-jarvis-warning/10 border-jarvis-warning/30';
-      default:
-        return 'text-jarvis-text-secondary bg-jarvis-text-secondary/10 border-jarvis-text-secondary/30';
-    }
-  };
-
-  const getCompatibilityLabel = (compatibility: string) => {
-    switch (compatibility) {
-      case 'full':
-        return '完全兼容';
-      case 'partial':
-        return '部分兼容';
-      default:
-        return '未知';
-    }
-  };
 
   return (
     <div className="h-full flex flex-col bg-jarvis-space">
@@ -87,38 +57,15 @@ export function SoftwareScannerPage() {
         </Button>
       </div>
 
-      {/* 筛选器 */}
+      {/* 搜索框 */}
       <div className="p-4 border-b border-white/5">
-        <div className="flex items-center space-x-2">
-          <Button
-            onClick={() => setFilter('all')}
-            variant={filter === 'all' ? 'primary' : 'ghost'}
-            size="sm"
-          >
-            全部 ({software.length})
-          </Button>
-          <Button
-            onClick={() => setFilter('full')}
-            variant={filter === 'full' ? 'primary' : 'ghost'}
-            size="sm"
-          >
-            完全兼容 ({Array.isArray(software) ? software.filter((s) => s.compatibility === 'full').length : 0})
-          </Button>
-          <Button
-            onClick={() => setFilter('partial')}
-            variant={filter === 'partial' ? 'primary' : 'ghost'}
-            size="sm"
-          >
-            部分兼容 ({Array.isArray(software) ? software.filter((s) => s.compatibility === 'partial').length : 0})
-          </Button>
-          <Button
-            onClick={() => setFilter('unknown')}
-            variant={filter === 'unknown' ? 'primary' : 'ghost'}
-            size="sm"
-          >
-            未知 ({Array.isArray(software) ? software.filter((s) => s.compatibility === 'unknown').length : 0})
-          </Button>
-        </div>
+        <input
+          type="text"
+          placeholder="搜索软件名称..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="input w-full max-w-md"
+        />
       </div>
 
       {/* 软件列表 */}
@@ -147,14 +94,16 @@ export function SoftwareScannerPage() {
           <div className="h-full flex items-center justify-center">
             <div className="text-center text-jarvis-text-secondary">
               <div className="text-4xl mb-2">📦</div>
-              <div className="text-sm">未找到软件</div>
+              <div className="text-sm">
+                {searchTerm ? '未找到匹配的软件' : '未找到软件'}
+              </div>
             </div>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredSoftware.map((item) => (
+            {filteredSoftware.map((item, index) => (
               <div
-                key={item.id}
+                key={index}
                 className="bg-jarvis-panel border border-white/10 rounded-lg p-6 hover:border-jarvis-primary/50 transition-colors"
               >
                 {/* 软件信息 */}
@@ -163,46 +112,26 @@ export function SoftwareScannerPage() {
                     <h3 className="text-lg font-medium text-jarvis-text truncate">
                       {item.name}
                     </h3>
-                    {item.version && (
+                    {item.version && item.version !== 'Unknown' && (
                       <div className="text-sm text-jarvis-text-secondary mt-1">
                         版本: {item.version}
                       </div>
                     )}
+                    {item.publisher && item.publisher !== 'Unknown' && (
+                      <div className="text-sm text-jarvis-text-secondary mt-1">
+                        发布者: {item.publisher}
+                      </div>
+                    )}
+                    {item.install_date && item.install_date !== 'Unknown' && (
+                      <div className="text-xs text-jarvis-text-secondary mt-2">
+                        安装日期: {item.install_date}
+                      </div>
+                    )}
                   </div>
                   <div className="flex-shrink-0 ml-2">
-                    <span className="text-2xl">
-                      {item.platform === 'macos' ? '🍎' : '🪟'}
-                    </span>
+                    <span className="text-2xl">📦</span>
                   </div>
                 </div>
-
-                {/* 兼容性标签 */}
-                <div className="mb-4">
-                  <span
-                    className={`inline-block px-3 py-1 rounded-full text-xs font-medium border ${getCompatibilityColor(
-                      item.compatibility
-                    )}`}
-                  >
-                    {getCompatibilityLabel(item.compatibility)}
-                  </span>
-                </div>
-
-                {/* 能力列表 */}
-                {item.capabilities && item.capabilities.length > 0 && (
-                  <div>
-                    <div className="text-xs text-jarvis-text-secondary mb-2">支持的能力:</div>
-                    <div className="flex flex-wrap gap-1">
-                      {item.capabilities.map((capability, index) => (
-                        <span
-                          key={index}
-                          className="px-2 py-1 bg-jarvis-space text-xs text-jarvis-text rounded"
-                        >
-                          {capability}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
             ))}
           </div>
